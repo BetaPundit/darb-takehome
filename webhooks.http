@@ -1,0 +1,122 @@
+### Sample webhook requests (VS Code "REST Client" / JetBrains HTTP client).
+### Start the app first:  npm run db:seed && npm run dev
+### These run UNSIGNED, which the server accepts only when no secrets are configured (dev mode).
+### With secrets set, use scripts/send-fixtures.sh instead: it signs each body with HMAC-SHA256.
+### Fixture bytes are the ASCII string "DARB-FIXTURE:<name>"; the mock extractor looks them up by SHA-256.
+### Print every fixture's hash/base64:  npx tsx scripts/print-fixtures.ts
+
+@base = http://localhost:3000
+
+### 1. Email, exact match from Desert Fleet's mailbox   -> AUTO_MATCHED to txn_email
+POST {{base}}/api/webhooks/email
+Content-Type: application/json
+
+{
+  "messageId": "<http-1@desertfleet>",
+  "from": "accounts@desertfleet.example",
+  "to": ["receipts@darb.sa"],
+  "subject": "Tax invoice INV-88231",
+  "attachments": [
+    { "filename": "invoice.jpg", "contentType": "image/jpeg", "contentBase64": "REFSQi1GSVhUVVJFOmVtYWlsX2V4YWN0" }
+  ]
+}
+
+### 2. Same message again (redelivery)   -> 200, "duplicate": true, nothing new stored
+POST {{base}}/api/webhooks/email
+Content-Type: application/json
+
+{
+  "messageId": "<http-1@desertfleet>",
+  "from": "accounts@desertfleet.example",
+  "to": ["receipts@darb.sa"],
+  "attachments": [
+    { "filename": "invoice.jpg", "contentType": "image/jpeg", "contentBase64": "REFSQi1GSVhUVVJFOmVtYWlsX2V4YWN0" }
+  ]
+}
+
+### 3. Email from an unregistered sender   -> 200 {"status":"ignored","reason":"UNKNOWN_SENDER"}, nothing stored
+POST {{base}}/api/webhooks/email
+Content-Type: application/json
+
+{
+  "messageId": "<http-3@evil>",
+  "from": "stranger@evil.example",
+  "to": ["receipts@darb.sa"],
+  "attachments": [
+    { "filename": "x.jpg", "contentType": "image/jpeg", "contentBase64": "REFSQi1GSVhUVVJFOmV4YWN0" }
+  ]
+}
+
+### 4. Invalid payload   -> 400 with field paths only (never echoes submitted values)
+POST {{base}}/api/webhooks/email
+Content-Type: application/json
+
+{ "messageId": "", "from": "not-an-email", "to": [], "attachments": [] }
+
+### 5. WhatsApp handshake (Meta calls this when you subscribe the webhook). Needs WHATSAPP_VERIFY_TOKEN set.
+GET {{base}}/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=YOUR_TOKEN&hub.challenge=1158201444
+
+### 6. WhatsApp image from driver +966 50 111 1111   -> AUTO_MATCHED to txn_exact
+###    The media id "fixture:exact" is resolved by a dev-only fixture fetcher (no Meta credentials needed).
+POST {{base}}/api/webhooks/whatsapp
+Content-Type: application/json
+
+{
+  "object": "whatsapp_business_account",
+  "entry": [{
+    "id": "WABA_ID",
+    "changes": [{
+      "field": "messages",
+      "value": {
+        "messaging_product": "whatsapp",
+        "metadata": { "display_phone_number": "15550001111", "phone_number_id": "123" },
+        "messages": [{
+          "id": "wamid.http-1",
+          "from": "966501111111",
+          "timestamp": "1760000000",
+          "type": "image",
+          "image": { "id": "fixture:exact", "mime_type": "image/jpeg" }
+        }]
+      }
+    }]
+  }]
+}
+
+### 7. WhatsApp: two same-amount, same-day, same-merchant transactions   -> NEEDS_REVIEW (open http://localhost:3000/review)
+POST {{base}}/api/webhooks/whatsapp
+Content-Type: application/json
+
+{
+  "object": "whatsapp_business_account",
+  "entry": [{ "id": "W", "changes": [{ "field": "messages", "value": {
+    "messaging_product": "whatsapp", "metadata": { "phone_number_id": "123" },
+    "messages": [{ "id": "wamid.http-2", "from": "966501111111", "timestamp": "1760000000", "type": "image",
+                   "image": { "id": "fixture:ambiguous", "mime_type": "image/jpeg" } }]
+  } }] }]
+}
+
+### 8. WhatsApp delivery receipts only (no messages)   -> 200 {"status":"ignored","reason":"NO_MEDIA"}
+POST {{base}}/api/webhooks/whatsapp
+Content-Type: application/json
+
+{
+  "object": "whatsapp_business_account",
+  "entry": [{ "id": "W", "changes": [{ "field": "messages", "value": {
+    "messaging_product": "whatsapp", "metadata": { "phone_number_id": "123" },
+    "statuses": [{ "id": "wamid.x", "status": "delivered" }]
+  } }] }]
+}
+
+### 9. Card transaction feed: delivers a transaction; UNMATCHED receipts in the same scope are re-matched
+POST {{base}}/api/webhooks/transactions
+Content-Type: application/json
+
+[{
+  "externalRef": "feed-http-1",
+  "clientId": "client_alnoor",
+  "driverPhone": "+966501111111",
+  "merchantName": "SAUDI ELECTRICITY CO",
+  "amountMinor": 99999,
+  "currency": "SAR",
+  "occurredAt": "2026-10-02T10:00:00+03:00"
+}]

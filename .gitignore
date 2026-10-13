@@ -47,3 +47,6 @@ next-env.d.ts
 /data
 *.db
 *.db-journal
+
+# playwright artifacts
+/.playwright-mcp
