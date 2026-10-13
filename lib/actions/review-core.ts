@@ -1,6 +1,6 @@
 import { Prisma, type PrismaClient } from '@/lib/generated/prisma/client';
 import { consoleLogger, type Logger } from '@/lib/logger';
-import { isUniqueViolation } from '@/lib/services/match-pipeline';
+import { isUniqueViolation, TXN_TAKEN, unmatchIfNoCandidates, withdrawCompetingOffers } from '@/lib/services/match-pipeline';
 
 /**
  * Reviewer decisions. Plain functions over a PrismaClient so they run (and are tested) without the Next
@@ -34,7 +34,6 @@ export function toClientError(err: Error, log: Logger = consoleLogger): ClientEr
   return { code: 'INTERNAL', message: 'Something went wrong. Please try again.' };
 }
 
-const TXN_TAKEN = 'system:txn-taken';
 const CONFIRMED = ['AUTO_CONFIRMED', 'CONFIRMED'] as const;
 
 export interface ConfirmResult {
@@ -83,21 +82,8 @@ async function confirmInTransaction(tx: Prisma.TransactionClient, matchId: strin
     data: { status: 'REJECTED', decidedBy: 'system:sibling-confirmed', decidedAt: now },
   });
 
-  // Other documents were offered this same transaction. Reject those offers, and never leave such a
-  // document in NEEDS_REVIEW with nothing to review: it goes back to UNMATCHED (re-match may pick it up later).
-  const competing = await tx.documentMatch.findMany({
-    where: { transactionId: transaction.id, status: 'CANDIDATE', documentId: { not: document.id } },
-    select: { id: true, documentId: true },
-  });
-  if (competing.length > 0) {
-    await tx.documentMatch.updateMany({
-      where: { id: { in: competing.map((m) => m.id) }, status: 'CANDIDATE' },
-      data: { status: 'REJECTED', decidedBy: TXN_TAKEN, decidedAt: now },
-    });
-    for (const documentId of new Set(competing.map((m) => m.documentId))) {
-      await unmatchIfNoCandidates(tx, documentId, 'CANDIDATE_TAKEN');
-    }
-  }
+  // Other documents were offered this same transaction: withdraw those offers (shared with the auto-confirm path).
+  await withdrawCompetingOffers(tx, transaction.id, document.id, now);
 
   const matched = await tx.document.updateMany({
     where: { id: document.id, status: { in: ['NEEDS_REVIEW', 'UNMATCHED'] } },
@@ -106,13 +92,6 @@ async function confirmInTransaction(tx: Prisma.TransactionClient, matchId: strin
   if (matched.count !== 1) throw new Error(`Document ${document.id} is ${document.status}, expected NEEDS_REVIEW or UNMATCHED`);
 
   return { ...result, alreadyConfirmed: false };
-}
-
-/** A NEEDS_REVIEW document whose last candidate is gone becomes UNMATCHED. Documents in any other state are left alone. */
-async function unmatchIfNoCandidates(tx: Prisma.TransactionClient, documentId: string, matchReason: string): Promise<void> {
-  const remaining = await tx.documentMatch.count({ where: { documentId, status: 'CANDIDATE' } });
-  if (remaining > 0) return;
-  await tx.document.updateMany({ where: { id: documentId, status: 'NEEDS_REVIEW' }, data: { status: 'UNMATCHED', matchReason } });
 }
 
 export interface RejectResult {

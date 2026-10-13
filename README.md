@@ -44,7 +44,7 @@ it wipes and re-creates the demo data.
 ## Tests and checks
 
 ```bash
-npm test             # 575 tests, ~1 s. Matcher and helpers need no DB; ingestion/handler/action tests use a real SQLite file per test file
+npm test             # 578 tests, ~1 s. Matcher and helpers need no DB; ingestion/handler/action tests use a real SQLite file per test file
 npm run typecheck
 npm run lint
 npm run build

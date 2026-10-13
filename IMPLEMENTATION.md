@@ -172,7 +172,7 @@ erDiagram
 | Two documents both auto-match one transaction | exactly one confirmed; the loser re-loads, sees it taken, re-decides (never fails, never double-confirms) | partial unique index + retry loop; the last attempt cannot auto-confirm, so a pathological race ends in review |
 | Two reviewers confirm one transaction | one wins; the other gets `TRANSACTION_ALREADY_CONFIRMED`, with no partial writes | the same index. `P2002` is caught **outside** the transaction callback (Postgres aborts a transaction after a failed statement) |
 | Reviewer double-clicks Confirm | second call returns `alreadyConfirmed: true`, writes nothing | idempotent action; the UI disabling the buttons is cosmetic |
-| Confirming a transaction that other documents were offered | their offers are rejected; documents left with no candidate return to `UNMATCHED` instead of sitting in review with nothing to review | one transaction in `confirmMatchCore` |
+| A transaction is confirmed (by the matcher **or** a reviewer) while other documents were still offered it | their offers are withdrawn; documents left with no candidate return to `UNMATCHED` (`CANDIDATE_TAKEN`) instead of sitting in review with nothing to review | one shared helper (`withdrawCompetingOffers`) called inside the same DB transaction by both paths. Found by the end-to-end run: the auto-confirm path originally skipped it |
 | Reviewer rejected a pair, then re-match runs | that pair is never offered again | rejected pairs are excluded when loading candidates |
 
 Races are tested by forcing the bad interleaving (injecting a competing confirmation between "candidates loaded" and "result persisted"), not by hoping a parallel run hits it.
@@ -254,7 +254,7 @@ One supplier invoice sometimes covers several card charges (a monthly invoice pa
 
 ## 12. Testing
 
-`npm test` runs 575 tests in about a second. Suites:
+`npm test` runs 578 tests in about a second. Suites:
 
 - **Matcher and helpers (no DB):** the six required edge cases plus the last4 tie-breaker; every row of the amount and date tables; exact boundaries at the thresholds and margin; float-noise cases; order independence under shuffles; stable ties; deep-frozen inputs; a test that fails if `Date.now` or `Math.random` is called; scope filters for both sender kinds; currency mismatch; low-confidence cap; `CARD_MISMATCH`; the amount gate. Normalization and similarity tests use real merchant strings, including negatives.
 - **Ingestion (real SQLite file per test file):** every row of the scenario table run through the real pipeline; duplicate message id; duplicate content under a new id; the same bytes from a different sender (not a duplicate); 8 concurrent identical submissions; extractor throwing/hanging/invalid; blob missing; two workers racing; lease expiry; stale recovery; a **forced** lost auto-confirm race.

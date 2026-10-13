@@ -35,6 +35,36 @@ export function isUniqueViolation(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
 }
 
+/** decidedBy value for offers withdrawn because another document took the transaction. */
+export const TXN_TAKEN = 'system:txn-taken';
+
+/** A NEEDS_REVIEW document whose last candidate is gone becomes UNMATCHED. Documents in any other state are left alone. */
+export async function unmatchIfNoCandidates(tx: Prisma.TransactionClient, documentId: string, matchReason: string): Promise<void> {
+  const remaining = await tx.documentMatch.count({ where: { documentId, status: 'CANDIDATE' } });
+  if (remaining > 0) return;
+  await tx.document.updateMany({ where: { id: documentId, status: 'NEEDS_REVIEW' }, data: { status: 'UNMATCHED', matchReason } });
+}
+
+/**
+ * A transaction was just confirmed for `winnerDocumentId` (by the matcher OR by a reviewer). Other documents that were
+ * still being OFFERED that transaction lose the offer, and never stay in review with nothing left to review.
+ * One implementation for both paths, so the review queue can never show a candidate that can only fail.
+ */
+export async function withdrawCompetingOffers(tx: Prisma.TransactionClient, transactionId: string, winnerDocumentId: string, now: Date): Promise<void> {
+  const competing = await tx.documentMatch.findMany({
+    where: { transactionId, status: 'CANDIDATE', documentId: { not: winnerDocumentId } },
+    select: { id: true, documentId: true },
+  });
+  if (competing.length === 0) return;
+  await tx.documentMatch.updateMany({
+    where: { id: { in: competing.map((m) => m.id) }, status: 'CANDIDATE' },
+    data: { status: 'REJECTED', decidedBy: TXN_TAKEN, decidedAt: now },
+  });
+  for (const documentId of new Set(competing.map((m) => m.documentId))) {
+    await unmatchIfNoCandidates(tx, documentId, 'CANDIDATE_TAKEN');
+  }
+}
+
 function candidateWindow(documentDate: string | null, now: Date): { from: Date; to: Date } {
   const m = documentDate ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(documentDate) : null;
   const dayStartUtc = m ? Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : NaN;
@@ -114,15 +144,17 @@ async function persistResult(
     if (moved.count !== 1) throw new ConcurrentModificationError(documentId);
 
     if (rows.length === 0) return;
+    const decidedAt = new Date();
     await tx.documentMatch.createMany({
       data: rows.map((r, i) => {
         if (!autoConfirm) return { ...r, status: 'CANDIDATE' as const };
         // Winner is auto-confirmed (the partial unique index decides races). Alternatives are kept for audit.
         return i === 0
-          ? { ...r, status: 'AUTO_CONFIRMED' as const, decidedBy: 'system:auto', decidedAt: new Date() }
-          : { ...r, status: 'REJECTED' as const, decidedBy: 'system:auto', decidedAt: new Date() };
+          ? { ...r, status: 'AUTO_CONFIRMED' as const, decidedBy: 'system:auto', decidedAt }
+          : { ...r, status: 'REJECTED' as const, decidedBy: 'system:auto', decidedAt };
       }),
     });
+    if (autoConfirm) await withdrawCompetingOffers(tx, rows[0]!.transactionId, documentId, decidedAt);
   });
 }
 
