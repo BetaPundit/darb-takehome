@@ -1,14 +1,125 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
+// Darb Portal data model. Money is always Int minor units (halalas), never Float/Decimal.
+// SQLite has no native enums: Prisma stores them as TEXT holding the enum name.
+// NOTE: prisma/migrations/*_init/migration.sql also contains a hand-written partial unique
+// index (one_confirmed_per_txn) that this schema cannot express. Do not drop it when regenerating.
 
 generator client {
-  provider = "prisma-client"
-  output   = "../lib/generated/prisma"
+  provider     = "prisma-client"
+  output       = "../lib/generated/prisma"
   moduleFormat = "cjs"
 }
 
 datasource db {
   provider = "sqlite"
+}
+
+enum Source {
+  EMAIL
+  WHATSAPP
+}
+
+enum DocumentStatus {
+  RECEIVED
+  EXTRACTED
+  MATCHED
+  NEEDS_REVIEW
+  UNMATCHED
+  FAILED
+}
+
+enum MatchStatus {
+  CANDIDATE
+  AUTO_CONFIRMED
+  CONFIRMED
+  REJECTED
+}
+
+model Client {
+  id           String         @id @default(cuid())
+  name         String
+  senders      ClientSender[]
+  transactions Transaction[]
+  documents    Document[]
+}
+
+// An email address allowed to submit documents on behalf of a client. Stored lowercased.
+model ClientSender {
+  id       String @id @default(cuid())
+  clientId String
+  email    String @unique
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Restrict)
+
+  @@index([clientId])
+}
+
+model Transaction {
+  id           String          @id @default(cuid())
+  clientId     String
+  // Idempotency key of the card feed: re-delivering the same transaction is an upsert, not a duplicate.
+  externalRef  String          @unique
+  // E.164. Null for transactions not tied to a driver; WhatsApp senders can only match non-null phones.
+  driverPhone  String?
+  merchantName String
+  amountMinor  Int
+  currency     String          @default("SAR")
+  occurredAt   DateTime
+  cardLast4    String?
+  client       Client          @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  matches      DocumentMatch[]
+
+  @@index([clientId, occurredAt])
+  @@index([driverPhone, occurredAt])
+}
+
+model Document {
+  id                   String          @id @default(cuid())
+  source               Source
+  // Provider message id (email messageId / WhatsApp wamid). With attachmentIndex it is the idempotency key.
+  externalMessageId    String
+  attachmentIndex      Int             @default(0)
+  // Sender scope: "client:<clientId>" for email, "phone:<e164>" for WhatsApp. Dedup by content is per scope.
+  scopeKey             String
+  contentHash          String
+  // Raw sender identity (email address or E.164 phone), kept for audit.
+  senderRef            String
+  // Resolved owner client. Null for WhatsApp documents (scope is the phone).
+  clientId             String?
+  blobKey              String
+  mimeType             String
+  status               DocumentStatus  @default(RECEIVED)
+  // Validated against extractedDocumentSchema (lib/extraction/types.ts) at the read boundary.
+  extraction           Json?
+  extractionConfidence Float?
+  matchReason          String?
+  failureReason        String?
+  // Lease for the compare-and-set claim in processDocument.
+  processingStartedAt  DateTime?
+  duplicateOfId        String?
+  receivedAt           DateTime        @default(now())
+  client               Client?         @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  duplicateOf          Document?       @relation("DocumentDuplicates", fields: [duplicateOfId], references: [id], onDelete: SetNull)
+  duplicates           Document[]      @relation("DocumentDuplicates")
+  matches              DocumentMatch[]
+
+  @@unique([source, externalMessageId, attachmentIndex])
+  @@unique([scopeKey, contentHash])
+  @@index([status])
+  @@index([clientId, status])
+}
+
+model DocumentMatch {
+  id            String      @id @default(cuid())
+  documentId    String
+  transactionId String
+  score         Float
+  rank          Int
+  signals       Json
+  status        MatchStatus @default(CANDIDATE)
+  decidedBy     String?
+  decidedAt     DateTime?
+  document      Document    @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+
+  @@unique([documentId, transactionId])
+  @@index([transactionId, status])
 }
