@@ -34,7 +34,9 @@ export interface MatcherConfig {
   /** invoice dated before the charge: max days still plausible, signal = 1 - lagDecayPerDay * days */
   maxLagDays: number;
   lagDecayPerDay: number;
-  /** invoice dated 1 day after the charge */
+  /** invoice dated up to this many days AFTER the charge is still plausible */
+  maxLeadDays: number;
+  /** signal for an invoice dated within maxLeadDays after the charge */
   leadSignal: number;
   /** signal used when the document has no readable date */
   dateMissingSignal: number;
@@ -58,6 +60,7 @@ export const DEFAULT_MATCHER_CONFIG: MatcherConfig = {
   cardMismatchMultiplier: 0.5,
   maxLagDays: 3,
   lagDecayPerDay: 0.2,
+  maxLeadDays: 1,
   leadSignal: 0.7,
   dateMissingSignal: 0.5,
   utcOffsetMinutes: 180,
