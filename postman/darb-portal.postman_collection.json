@@ -1,0 +1,1029 @@
+{
+  "info": {
+    "name": "Darb Portal webhooks",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Run against `npm run dev` after `npm run db:seed`.\n\nSigning: set emailSecret / whatsappSecret / transactionsSecret / verifyToken to the SAME values the server was started with and set serverHasSecrets=true. A collection pre-request script then HMAC-signs each POST body automatically. Leave them empty for an unsigned dev server.\n\nChange runId to a new value (or delete it) to send fresh message ids. Review results at {{baseUrl}}/review."
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Signs POST bodies with HMAC-SHA256 over the EXACT bytes sent, like the real providers do.",
+          "// Skipped when the matching secret variable is empty (dev mode: server accepts unsigned requests) or when the",
+          "// request carries the x-skip-sign header (used by the \"forged signature\" request).",
+          "if (!pm.variables.get('runId')) pm.collectionVariables.set('runId', String(Date.now()));",
+          "const cryptoJs = require('crypto-js'); // explicit require: the bare CryptoJS global is deprecated",
+          "if (pm.request.method === 'POST' && pm.request.body && pm.request.body.raw && !pm.request.headers.has('x-skip-sign')) {",
+          "  const path = pm.request.url.getPath();",
+          "  let secret, header;",
+          "  if (path.includes('/webhooks/email')) { secret = pm.variables.get('emailSecret'); header = 'x-signature-256'; }",
+          "  else if (path.includes('/webhooks/whatsapp')) { secret = pm.variables.get('whatsappSecret'); header = 'x-hub-signature-256'; }",
+          "  else if (path.includes('/webhooks/transactions')) { secret = pm.variables.get('transactionsSecret'); header = 'x-signature-256'; }",
+          "  if (secret) {",
+          "    const body = pm.variables.replaceIn(pm.request.body.raw);",
+          "    pm.request.headers.upsert({ key: header, value: 'sha256=' + cryptoJs.HmacSHA256(body, secret).toString() });",
+          "  }",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "emailSecret",
+      "value": ""
+    },
+    {
+      "key": "whatsappSecret",
+      "value": ""
+    },
+    {
+      "key": "transactionsSecret",
+      "value": ""
+    },
+    {
+      "key": "verifyToken",
+      "value": ""
+    },
+    {
+      "key": "serverHasSecrets",
+      "value": "false"
+    },
+    {
+      "key": "runId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Email",
+      "item": [
+        {
+          "name": "Exact match (Desert Fleet) -> AUTO_MATCHED to txn_email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "email"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"messageId\":\"<{{runId}}.1@desertfleet>\",\"from\":\"accounts@desertfleet.example\",\"to\":[\"receipts@darb.sa\"],\"subject\":\"Tax invoice INV-88231\",\"attachments\":[{\"filename\":\"invoice.jpg\",\"contentType\":\"image/jpeg\",\"contentBase64\":\"REFSQi1GSVhUVVJFOmVtYWlsX2V4YWN0\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Processing (OCR + matching) happens AFTER the 200. Open /review or query the DB to see the outcome."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"accepted\", () => pm.expect(j.status).to.eql(\"accepted\"));",
+                  "pm.test(\"one document\", () => pm.expect(j.documents).to.have.lengthOf(1));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Redelivery (same messageId) -> duplicate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "email"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"messageId\":\"<{{runId}}.1@desertfleet>\",\"from\":\"accounts@desertfleet.example\",\"to\":[\"receipts@darb.sa\"],\"attachments\":[{\"filename\":\"invoice.jpg\",\"contentType\":\"image/jpeg\",\"contentBase64\":\"REFSQi1GSVhUVVJFOmVtYWlsX2V4YWN0\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"flagged duplicate, nothing new stored\", () => pm.expect(j.documents[0].duplicate).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Same file, new messageId -> duplicate (content hash)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "email"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"messageId\":\"<{{runId}}.2@desertfleet>\",\"from\":\"accounts@desertfleet.example\",\"to\":[\"receipts@darb.sa\"],\"attachments\":[{\"filename\":\"copy.jpg\",\"contentType\":\"image/jpeg\",\"contentBase64\":\"REFSQi1GSVhUVVJFOmVtYWlsX2V4YWN0\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"duplicate by content\", () => pm.expect(j.documents[0].duplicate).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Multi-attachment (Al Noor): rounding + tip",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "email"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"messageId\":\"<{{runId}}.3@alnoor>\",\"from\":\"ap@alnoor.example\",\"to\":[\"receipts@darb.sa\"],\"attachments\":[{\"filename\":\"a.jpg\",\"contentType\":\"image/jpeg\",\"contentBase64\":\"REFSQi1GSVhUVVJFOnJvdW5kaW5n\"},{\"filename\":\"b.jpg\",\"contentType\":\"image/jpeg\",\"contentBase64\":\"REFSQi1GSVhUVVJFOnRpcA==\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"one document per attachment\", () => pm.expect(j.documents).to.have.lengthOf(2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown sender -> ignored, nothing stored",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "email"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"messageId\":\"<{{runId}}.4@evil>\",\"from\":\"stranger@evil.example\",\"to\":[\"receipts@darb.sa\"],\"attachments\":[{\"filename\":\"x.jpg\",\"contentType\":\"image/jpeg\",\"contentBase64\":\"REFSQi1GSVhUVVJFOmV4YWN0\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"ignored UNKNOWN_SENDER\", () => { pm.expect(j.status).to.eql(\"ignored\"); pm.expect(j.reason).to.eql(\"UNKNOWN_SENDER\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid payload -> 400, field paths only",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "email"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"messageId\":\"\",\"from\":\"not-an-email-SECRET\",\"to\":[],\"attachments\":[]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"submitted values are never echoed\", () => pm.expect(pm.response.text()).to.not.include(\"SECRET\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid base64 -> 400 naming the field",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "email"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"messageId\":\"<{{runId}}.5@alnoor>\",\"from\":\"ap@alnoor.example\",\"to\":[\"receipts@darb.sa\"],\"attachments\":[{\"filename\":\"x.jpg\",\"contentType\":\"image/jpeg\",\"contentBase64\":\"not base64 !!!\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"names the field\", () => pm.expect(pm.response.text()).to.include(\"attachments.0.contentBase64\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Forged signature -> 401 (only when the server has secrets)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-skip-sign",
+                "value": "1"
+              },
+              {
+                "key": "x-signature-256",
+                "value": "sha256=0000000000000000000000000000000000000000000000000000000000000000"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "email"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"messageId\":\"<{{runId}}.6@alnoor>\",\"from\":\"ap@alnoor.example\",\"to\":[\"receipts@darb.sa\"],\"attachments\":[{\"filename\":\"x.jpg\",\"contentType\":\"image/jpeg\",\"contentBase64\":\"REFSQi1GSVhUVVJFOmV4YWN0\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Sends a well-formed but wrong signature. With secrets configured the server must answer 401 and store nothing."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const expected = pm.variables.get(\"serverHasSecrets\") === \"true\" ? 401 : 200;",
+                  "pm.test(\"status \" + expected, () => pm.response.to.have.status(expected));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "WhatsApp",
+      "item": [
+        {
+          "name": "Handshake (correct token) -> echoes the challenge",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token={{verifyToken}}&hub.challenge=1158201444",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "whatsapp"
+              ],
+              "query": [
+                {
+                  "key": "hub.mode",
+                  "value": "subscribe"
+                },
+                {
+                  "key": "hub.verify_token",
+                  "value": "{{verifyToken}}"
+                },
+                {
+                  "key": "hub.challenge",
+                  "value": "1158201444"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const has = pm.variables.get(\"serverHasSecrets\") === \"true\";",
+                  "pm.test(has ? \"200 + challenge\" : \"403 (no verify token configured)\", () => { pm.response.to.have.status(has ? 200 : 403); if (has) pm.expect(pm.response.text()).to.eql(\"1158201444\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Handshake (wrong token) -> 403",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=definitely-wrong&hub.challenge=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "whatsapp"
+              ],
+              "query": [
+                {
+                  "key": "hub.mode",
+                  "value": "subscribe"
+                },
+                {
+                  "key": "hub.verify_token",
+                  "value": "definitely-wrong"
+                },
+                {
+                  "key": "hub.challenge",
+                  "value": "1"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403\", () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Image from driver +966501111111: exact -> AUTO_MATCHED to txn_exact",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/whatsapp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "whatsapp"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"15550001111\",\n              \"phone_number_id\": \"123\"\n            },\n            \"messages\": [\n              {\n                \"id\": \"wamid.{{runId}}.1\",\n                \"from\": \"966501111111\",\n                \"timestamp\": \"1760000000\",\n                \"type\": \"image\",\n                \"image\": {\n                  \"id\": \"fixture:exact\",\n                  \"mime_type\": \"image/jpeg\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The media id \"fixture:exact\" is resolved by a dev-only fixture fetcher, so no Meta credentials are needed. Phone numbers arrive WITHOUT a leading + (as Meta sends them) and are normalised to E.164."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"accepted\", () => pm.expect(j.status).to.eql(\"accepted\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Image: two same-amount transactions -> NEEDS_REVIEW",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/whatsapp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "whatsapp"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"15550001111\",\n              \"phone_number_id\": \"123\"\n            },\n            \"messages\": [\n              {\n                \"id\": \"wamid.{{runId}}.2\",\n                \"from\": \"966501111111\",\n                \"timestamp\": \"1760000000\",\n                \"type\": \"image\",\n                \"image\": {\n                  \"id\": \"fixture:ambiguous\",\n                  \"mime_type\": \"image/jpeg\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"accepted\", () => pm.expect(j.status).to.eql(\"accepted\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Image: garbage extraction -> UNMATCHED (still 200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/whatsapp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "whatsapp"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"15550001111\",\n              \"phone_number_id\": \"123\"\n            },\n            \"messages\": [\n              {\n                \"id\": \"wamid.{{runId}}.3\",\n                \"from\": \"966501111111\",\n                \"timestamp\": \"1760000000\",\n                \"type\": \"image\",\n                \"image\": {\n                  \"id\": \"fixture:garbage\",\n                  \"mime_type\": \"image/jpeg\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"accepted\", () => pm.expect(j.status).to.eql(\"accepted\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Image: extractor failure -> still 200, document FAILED",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/whatsapp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "whatsapp"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"15550001111\",\n              \"phone_number_id\": \"123\"\n            },\n            \"messages\": [\n              {\n                \"id\": \"wamid.{{runId}}.4\",\n                \"from\": \"966501111111\",\n                \"timestamp\": \"1760000000\",\n                \"type\": \"image\",\n                \"image\": {\n                  \"id\": \"fixture:forced_failure\",\n                  \"mime_type\": \"image/jpeg\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "OCR failures never surface as webhook errors: Meta must not redeliver for them."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"accepted\", () => pm.expect(j.status).to.eql(\"accepted\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Redelivery of the same message -> no new document",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/whatsapp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "whatsapp"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"15550001111\",\n              \"phone_number_id\": \"123\"\n            },\n            \"messages\": [\n              {\n                \"id\": \"wamid.{{runId}}.1\",\n                \"from\": \"966501111111\",\n                \"timestamp\": \"1760000000\",\n                \"type\": \"image\",\n                \"image\": {\n                  \"id\": \"fixture:exact\",\n                  \"mime_type\": \"image/jpeg\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"no new document\", () => pm.expect(j.documents).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delivery receipts only -> ignored",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/whatsapp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "whatsapp"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"W\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"phone_number_id\": \"123\"\n            },\n            \"statuses\": [\n              {\n                \"id\": \"wamid.x\",\n                \"status\": \"delivered\"\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"ignored NO_MEDIA\", () => { pm.expect(j.status).to.eql(\"ignored\"); pm.expect(j.reason).to.eql(\"NO_MEDIA\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Text message -> ignored",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/whatsapp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "whatsapp"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"15550001111\",\n              \"phone_number_id\": \"123\"\n            },\n            \"messages\": [\n              {\n                \"id\": \"wamid.{{runId}}.5\",\n                \"from\": \"966501111111\",\n                \"timestamp\": \"1760000000\",\n                \"type\": \"text\",\n                \"text\": {\n                  \"body\": \"hi\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"ignored\", () => pm.expect(j.status).to.eql(\"ignored\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Transaction feed + re-match",
+      "item": [
+        {
+          "name": "Deliver the card transaction for an UNMATCHED receipt -> re-match",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "transactions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"externalRef\": \"feed-{{runId}}\",\n    \"clientId\": \"client_alnoor\",\n    \"driverPhone\": \"+966501111111\",\n    \"merchantName\": \"SAUDI ELECTRICITY CO\",\n    \"amountMinor\": 99999,\n    \"currency\": \"SAR\",\n    \"occurredAt\": \"2026-10-02T10:00:00+03:00\"\n  }\n]",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Send the 'no_transaction' fixture first (WhatsApp image with media id fixture:no_transaction): it is UNMATCHED. Delivering this transaction re-matches it and auto-confirms."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"accepted\", () => pm.expect(j.status).to.eql(\"accepted\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Same transaction again -> idempotent (first write wins)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "transactions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"externalRef\": \"feed-{{runId}}\",\n    \"clientId\": \"client_alnoor\",\n    \"driverPhone\": \"+966501111111\",\n    \"merchantName\": \"SAUDI ELECTRICITY CO\",\n    \"amountMinor\": 12345,\n    \"currency\": \"SAR\",\n    \"occurredAt\": \"2026-10-02T10:00:00+03:00\"\n  }\n]",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"existing, not created\", () => { pm.expect(j.created).to.eql(0); pm.expect(j.existing).to.eql(1); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Fractional amount -> 400 (Prisma would silently truncate it)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "transactions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"externalRef\": \"bad-1\",\n    \"clientId\": \"client_alnoor\",\n    \"merchantName\": \"X\",\n    \"amountMinor\": 187.5,\n    \"currency\": \"SAR\",\n    \"occurredAt\": \"2026-10-02T10:00:00+03:00\"\n  }\n]",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown client -> 400 UNKNOWN_CLIENT",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "transactions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"externalRef\": \"bad-2\",\n    \"clientId\": \"client_nope\",\n    \"merchantName\": \"X\",\n    \"amountMinor\": 100,\n    \"currency\": \"SAR\",\n    \"occurredAt\": \"2026-10-02T10:00:00+03:00\"\n  }\n]",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 UNKNOWN_CLIENT\", () => { pm.response.to.have.status(400); pm.expect(pm.response.text()).to.include(\"UNKNOWN_CLIENT\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

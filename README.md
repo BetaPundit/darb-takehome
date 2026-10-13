@@ -27,7 +27,13 @@ With the dev server running, in a second terminal:
 ./scripts/send-fixtures.sh   # sends every fixture through the real webhooks, then prints the outcome of each
 ```
 
-Or use [webhooks.http](webhooks.http) (VS Code REST Client / JetBrains). Then open <http://localhost:3000/review>
+Or use [webhooks.http](webhooks.http) (VS Code REST Client / JetBrains), or import
+[postman/darb-portal.postman_collection.json](postman/darb-portal.postman_collection.json) into Postman. The collection
+has 21 requests with assertions, covers every endpoint and the failure cases (duplicates, unknown sender, invalid
+payloads, forged signature, oversized/fractional values), and signs each POST body for you. To sign, set the collection
+variables `emailSecret`, `whatsappSecret`, `transactionsSecret`, `verifyToken` to the same values the server was started
+with and `serverHasSecrets` to `true`; leave them empty for an unsigned dev server. Change `runId` to send fresh message ids.
+It also runs headless: `npx newman run postman/darb-portal.postman_collection.json --env-var baseUrl=http://localhost:3000`. Then open <http://localhost:3000/review>
 to confirm or reject the candidates the matcher was not sure about.
 
 To exercise HMAC signing, set the secrets for both the server and the script:
