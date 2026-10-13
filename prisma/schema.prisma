@@ -94,11 +94,8 @@ model Document {
   failureReason        String?
   // Lease for the compare-and-set claim in processDocument.
   processingStartedAt  DateTime?
-  duplicateOfId        String?
   receivedAt           DateTime        @default(now())
   client               Client?         @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  duplicateOf          Document?       @relation("DocumentDuplicates", fields: [duplicateOfId], references: [id], onDelete: SetNull)
-  duplicates           Document[]      @relation("DocumentDuplicates")
   matches              DocumentMatch[]
 
   @@unique([source, externalMessageId, attachmentIndex])

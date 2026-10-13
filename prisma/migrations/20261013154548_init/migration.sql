@@ -44,10 +44,8 @@ CREATE TABLE "Document" (
     "matchReason" TEXT,
     "failureReason" TEXT,
     "processingStartedAt" DATETIME,
-    "duplicateOfId" TEXT,
     "receivedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "Document_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
-    CONSTRAINT "Document_duplicateOfId_fkey" FOREIGN KEY ("duplicateOfId") REFERENCES "Document" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+    CONSTRAINT "Document_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
