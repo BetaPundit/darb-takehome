@@ -110,6 +110,7 @@ describe('WhatsApp webhook', () => {
       await post(payload, makeDeps(db, { media: media.store }));
       const again = await post(payload, makeDeps(db, { media: media.store }));
       expect(again.res.status).toBe(200);
+      expect(again.body).toMatchObject({ status: 'accepted', documents: 0, duplicates: 1 });
       expect(media.calls).toHaveLength(1);
       expect(await db.document.count({ where: { externalMessageId: 'wamid.C' } })).toBe(1);
     });
@@ -117,7 +118,7 @@ describe('WhatsApp webhook', () => {
     it('same photo forwarded under a new wamid by the same driver is a duplicate (content hash)', async () => {
       await post(waPayload([{ id: 'wamid.D1', from: DRIVER1, media: mediaIdFor('exact') }]));
       const { body } = await post(waPayload([{ id: 'wamid.D2', from: DRIVER1, media: mediaIdFor('exact') }]));
-      expect(body).toMatchObject({ status: 'accepted', documents: 0 });
+      expect(body).toMatchObject({ status: 'accepted', documents: 0, duplicates: 1 });
       expect(await db.document.count({ where: { externalMessageId: { in: ['wamid.D1', 'wamid.D2'] } } })).toBe(1);
     });
 

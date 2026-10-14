@@ -85,10 +85,14 @@ echo "== Late transaction: the 'no_transaction' receipt (Saudi Electricity, 999.
 TX="[{\"externalRef\":\"feed-$RUN\",\"clientId\":\"client_alnoor\",\"driverPhone\":\"+966501111111\",\"merchantName\":\"SAUDI ELECTRICITY CO\",\"amountMinor\":99999,\"currency\":\"SAR\",\"occurredAt\":\"2026-10-02T10:00:00+03:00\"}]"
 printf '%-34s -> ' "transactions feed"; post /api/webhooks/transactions x-signature-256 "$TX_SECRET" "$TX"; echo
 
-echo "== Forged signature (expect 401)"
-printf '%-34s -> ' "whatsapp wrong secret"
-body='{"object":"whatsapp_business_account","entry":[]}'
-curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -H "x-hub-signature-256: sha256=$(printf 'f%.0s' {1..64})" --data-binary "$body" "$BASE_URL/api/webhooks/whatsapp"; echo
+if [[ -n "$WA_SECRET" ]]; then
+  echo "== Forged signature (expect 401)"
+  printf '%-34s -> ' "whatsapp wrong secret"
+  body='{"object":"whatsapp_business_account","entry":[]}'
+  curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -H "x-hub-signature-256: sha256=$(printf 'f%.0s' {1..64})" --data-binary "$body" "$BASE_URL/api/webhooks/whatsapp"; echo
+else
+  echo "== Forged signature: skipped (WHATSAPP_APP_SECRET not set here; a dev server without secrets does not check signatures, see README)"
+fi
 
 sleep 2 # processing runs after the response
 echo; echo "== Results"

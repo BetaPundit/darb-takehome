@@ -111,5 +111,5 @@ export async function handleWhatsAppWebhook(req: Request, deps: WebhookDeps): Pr
     return unavailable(30);
   }
   log.info('webhook.accepted', { messages: messages.length, documents, duplicates, skipped });
-  return accepted({ documents, skipped });
+  return accepted({ documents, duplicates, skipped });
 }
