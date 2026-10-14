@@ -101,6 +101,46 @@ messages; the logger redacts known-sensitive field names itself, and a test runs
 asserts none of that appears. The one deliberate exception is the provider's message id (an email `Message-ID` or a
 WhatsApp `wamid`), which is what lets you trace a message with the provider.
 
+## Inspecting the database
+
+The database is the SQLite file `./dev.db`. Prisma Studio does **not** work with it (Prisma 7 reports
+`Prisma Studio is not supported for the "file:./dev.db" protocol`), so use the `sqlite3` CLI or any SQLite GUI
+(DB Browser for SQLite, TablePlus, the VS Code "SQLite Viewer" extension). Open it read-only so you cannot disturb
+the running server:
+
+```bash
+sqlite3 -readonly -header -column dev.db
+```
+
+Useful queries (the table is called `"Transaction"`, quoted, because it is a reserved word in SQLite):
+
+```sql
+-- where every document ended up
+select status, count(*) as n from Document group by status order by n desc;
+
+-- each document with its live matches
+select substr(d.id,-6) as doc, d.source, d.status, ifnull(d.matchReason,'-') as reason,
+       ifnull((select group_concat(transactionId||':'||status,' ') from DocumentMatch m
+               where m.documentId=d.id and m.status<>'REJECTED'),'-') as matches
+from Document d order by d.receivedAt desc limit 10;
+
+-- what the OCR extracted, and why a match scored the way it did
+select json_extract(extraction,'$.merchantName') as merchant, json_extract(extraction,'$.amountMinor')/100.0 as amount,
+       json_extract(extraction,'$.documentDate') as date, extractionConfidence as conf from Document where extraction is not null;
+select transactionId, round(score,4) as score, json_extract(signals,'$.amount') as amt, json_extract(signals,'$.merchant') as mer,
+       json_extract(signals,'$.date') as dat, json_extract(signals,'$.flags') as flags, status
+from DocumentMatch order by score desc;
+
+-- the key invariant: must return no rows
+select transactionId, count(*) from DocumentMatch where status in ('AUTO_CONFIRMED','CONFIRMED') group by 1 having count(*)>1;
+
+-- transactions with no confirmed document yet
+select t.id, t.merchantName, t.amountMinor/100.0 as amount from "Transaction" t
+where not exists (select 1 from DocumentMatch m where m.transactionId=t.id and m.status in ('AUTO_CONFIRMED','CONFIRMED'));
+```
+
+`npm run db:seed` resets the data (it wipes and re-creates the demo rows).
+
 ## Seed data and fixtures
 
 `npm run db:seed` creates two clients, three drivers and ten transactions. The mock extractor recognises 13 fixture
