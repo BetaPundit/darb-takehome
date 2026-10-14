@@ -91,7 +91,7 @@ The screenshots show the demo data from `npm run db:seed` plus `./scripts/send-f
 ## Tests and checks
 
 ```bash
-npm test             # 846 tests, ~1 s. Matcher and helpers need no DB; ingestion/handler/action tests use a real SQLite file per test file
+npm test             # 884 tests, ~1 s. Matcher and helpers need no DB; ingestion/handler/action tests use a real SQLite file per test file
 npm run typecheck
 npm run lint
 npm run build
