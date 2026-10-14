@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { z } from 'zod';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 import {
   ExtractionError,
   extractedDocumentSchema,
@@ -64,16 +64,23 @@ const UNSUPPORTED_KEYWORDS = new Set([
 function stripUnsupported(node: unknown): unknown {
   if (Array.isArray(node)) return node.map(stripUnsupported);
   if (node && typeof node === 'object') {
-    return Object.fromEntries(
+    const obj = Object.fromEntries(
       Object.entries(node)
         .filter(([key]) => !UNSUPPORTED_KEYWORDS.has(key))
         .map(([key, value]) => [key, stripUnsupported(value)]),
     );
+    // zod-to-json-schema emits nullable primitives as `type: ['string', 'null']`; spell them as anyOf so
+    // every nullable field has one uniform shape.
+    const { type, ...rest } = obj;
+    if (Array.isArray(type) && type.includes('null')) {
+      return { ...rest, anyOf: type.map((t) => ({ type: t })) };
+    }
+    return obj;
   }
   return node;
 }
 
-export const OUTPUT_JSON_SCHEMA = stripUnsupported(z.toJSONSchema(extractedDocumentSchema)) as Record<string, unknown>;
+export const OUTPUT_JSON_SCHEMA = stripUnsupported(zodToJsonSchema(extractedDocumentSchema, { $refStrategy: 'none' })) as Record<string, unknown>;
 
 export class ClaudeExtractor implements DocumentExtractor {
   private readonly client: ClaudeMessagesClient;

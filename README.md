@@ -5,11 +5,11 @@ transactions with a confidence score. High-confidence matches are attached autom
 review page. See [IMPLEMENTATION.md](IMPLEMENTATION.md) for how and why it works, including the scoring design,
 thresholds, assumptions, trade-offs and threat model.
 
-Stack: Next.js 15 (App Router), TypeScript (strict), Prisma 7 + SQLite, Zod, next-safe-action, Tailwind + shadcn/ui, Jest.
+Stack: Next.js 15 (App Router), TypeScript (strict), Prisma 6 + SQLite, Zod 3, next-safe-action 8, Tailwind + shadcn/ui, Jest 29.
 
 ## Quick start
 
-Requires Node 20.19+ (Prisma 7); developed on Node 22.
+Requires Node 18.18+ (Next 15, Prisma 6); developed on Node 22.
 
 ```bash
 npm install                  # also runs `prisma generate`
@@ -59,7 +59,7 @@ it wipes and re-creates the demo data.
 ## Tests and checks
 
 ```bash
-npm test             # 600 tests, ~1 s. Matcher and helpers need no DB; ingestion/handler/action tests use a real SQLite file per test file
+npm test             # 601 tests, ~1 s. Matcher and helpers need no DB; ingestion/handler/action tests use a real SQLite file per test file
 npm run typecheck
 npm run lint
 npm run build
@@ -112,10 +112,10 @@ WhatsApp `wamid`), which is what lets you trace a message with the provider.
 
 ## Inspecting the database
 
-The database is the SQLite file `./dev.db`. Prisma Studio does **not** work with it (Prisma 7 reports
-`Prisma Studio is not supported for the "file:./dev.db" protocol`), so use the `sqlite3` CLI or any SQLite GUI
-(DB Browser for SQLite, TablePlus, the VS Code "SQLite Viewer" extension). Open it read-only so you cannot disturb
-the running server:
+The database is the SQLite file `./dev.db`. Prisma Studio works with it (`npx prisma studio`, which reads `DATABASE_URL`
+from `.env`), but it can edit rows, so to look without any risk of disturbing the running server open the file
+read-only with the `sqlite3` CLI (or any SQLite GUI: DB Browser for SQLite, TablePlus, the VS Code "SQLite Viewer"
+extension):
 
 ```bash
 sqlite3 -readonly -header -column dev.db
@@ -169,11 +169,12 @@ lib/matching/            normalization, similarity, per-signal scoring (pure)
 lib/extraction/          DocumentExtractor interface, MockExtractor, fixtures, ClaudeExtractor
 lib/actions/             review confirm/reject (core logic + next-safe-action wrappers)
 prisma/                  schema, migration (with the partial unique index), seed
-tests/                   matcher, helpers, ingestion, handlers, actions, db constraints
+__tests__/               matcher, helpers, ingestion, handlers, actions, db constraints
 ```
 
 ## Notes
 
 - `ClaudeExtractor` is covered by unit tests with a stubbed client only. It has **not** been run against the real API.
 - The review actions and `/review` page have no authentication. They are intended to sit behind the portal's existing auth.
-- Dependency notes (Prisma pinned to stable 7.10.0, Next 15 audit advisory, `better-sqlite3` version alignment) are in IMPLEMENTATION.md.
+- Dependency notes (Prisma 6, Zod 3, Jest 29 per the assignment's stack; Next 15 audit advisory) are in IMPLEMENTATION.md.
+- `DATABASE_URL` is `file:../dev.db`: Prisma 6 resolves a relative SQLite path against `prisma/`, so this is `./dev.db` at the project root.

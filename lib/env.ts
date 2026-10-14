@@ -10,7 +10,7 @@ const rawEnvSchema = z.object({
     (v) => (v === '' ? undefined : v),
     z.enum(['development', 'test', 'production']).default('development'),
   ),
-  DATABASE_URL: z.preprocess((v) => (v === '' ? undefined : v), z.string().default('file:./dev.db')),
+  DATABASE_URL: z.preprocess((v) => (v === '' ? undefined : v), z.string().default('file:../dev.db')),
   EMAIL_WEBHOOK_SECRET: optionalString,
   WHATSAPP_APP_SECRET: optionalString,
   TRANSACTIONS_WEBHOOK_SECRET: optionalString,

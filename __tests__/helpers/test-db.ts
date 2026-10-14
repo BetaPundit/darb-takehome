@@ -6,13 +6,13 @@ import type { PrismaClient } from '@/lib/generated/prisma/client';
 
 /**
  * An isolated, migrated SQLite database for one test file. The schema comes from the template built once in
- * tests/global-setup.ts, so this is a file copy (milliseconds), safe across parallel jest workers.
+ * __tests__/global-setup.ts, so this is a file copy (milliseconds), safe across parallel jest workers.
  * Call `cleanup()` in afterAll.
  */
 export async function createTestDb(): Promise<{ db: PrismaClient; cleanup: () => Promise<void> }> {
   const dir = process.env.DARB_TEST_DB_DIR;
   const template = process.env.DARB_TEST_DB_TEMPLATE;
-  if (!dir || !template) throw new Error('Test DB template missing: jest globalSetup (tests/global-setup.ts) did not run.');
+  if (!dir || !template) throw new Error('Test DB template missing: jest globalSetup (__tests__/global-setup.ts) did not run.');
 
   mkdirSync(dir, { recursive: true });
   const file = join(dir, `${randomUUID()}.db`);

@@ -62,7 +62,7 @@ function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
 }
 
 export function createIngestionService(deps: IngestDeps) {
-  const { db, extractor, blobs, log } = deps;
+  const { db, extractor, blobs } = deps;
   const now = deps.now ?? (() => new Date());
   const extractionTimeoutMs = deps.extractionTimeoutMs ?? 30_000;
   const leaseMs = deps.leaseMs ?? 300_000;

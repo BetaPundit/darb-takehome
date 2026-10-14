@@ -1,4 +1,4 @@
-import type { ZodError } from 'zod';
+import type { ZodError, ZodIssue } from 'zod';
 
 export function accepted(body: Record<string, unknown> = {}): Response {
   return Response.json({ status: 'accepted', ...body }, { status: 200 });
@@ -8,9 +8,20 @@ export function ignored(reason: string): Response {
   return Response.json({ status: 'ignored', reason }, { status: 200 });
 }
 
+/**
+ * Zod 3 appends the submitted value to enum issues ("... received 'x'"), so that one message is rebuilt
+ * from the schema's own options. Every other message built-in to Zod 3 names types or limits, never values.
+ */
+function safeMessage(issue: ZodIssue): string {
+  if (issue.code === 'invalid_enum_value') {
+    return `Invalid enum value. Expected ${issue.options.map((o) => `'${String(o)}'`).join(' | ')}`;
+  }
+  return issue.message;
+}
+
 /** Path + message only. Never echoes submitted values or attachment bytes. */
 export function invalid(error: ZodError): Response {
-  const issues = error.issues.map((i) => ({ path: i.path.join('.'), message: i.message }));
+  const issues = error.issues.map((i) => ({ path: i.path.join('.'), message: safeMessage(i) }));
   return Response.json({ status: 'invalid', issues }, { status: 400 });
 }
 

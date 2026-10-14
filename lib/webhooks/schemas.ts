@@ -48,10 +48,10 @@ const attachmentSchema = z.object({
 
 export const emailWebhookSchema = z.object({
   messageId: z.string().trim().min(1).max(255),
-  from: z.email().transform((s) => s.toLowerCase()),
-  to: z.array(z.email()).min(1),
+  from: z.string().email().transform((s) => s.toLowerCase()),
+  to: z.array(z.string().email()).min(1),
   subject: z.string().max(1000).optional(),
-  receivedAt: z.iso.datetime({ offset: true }).optional(),
+  receivedAt: z.string().datetime({ offset: true }).optional(),
   attachments: z.array(attachmentSchema).min(1).max(10),
 });
 export type EmailWebhook = z.infer<typeof emailWebhookSchema>;
@@ -221,7 +221,7 @@ export const transactionFeedSchema = z
       merchantName: z.string().trim().min(1).max(255),
       amountMinor: z.number().int().min(0).max(MAX_INT32),
       currency: z.string().regex(/^[A-Z]{3}$/).default('SAR'),
-      occurredAt: z.iso.datetime({ offset: true }),
+      occurredAt: z.string().datetime({ offset: true }),
       cardLast4: z.string().regex(/^\d{4}$/).nullish(),
     }),
   )

@@ -254,13 +254,13 @@ One supplier invoice sometimes covers several card charges (a monthly invoice pa
 
 ## 12. Testing
 
-`npm test` runs 600 tests in about a second. Suites:
+`npm test` runs 601 tests in about a second. Suites:
 
 - **Matcher and helpers (no DB):** the six required edge cases plus the last4 tie-breaker; every row of the amount and date tables; exact boundaries at the thresholds and margin; float-noise cases; order independence under shuffles; stable ties; deep-frozen inputs; a test that fails if `Date.now` or `Math.random` is called; scope filters for both sender kinds; currency mismatch; low-confidence cap; `CARD_MISMATCH`; the amount gate. Normalization and similarity tests use real merchant strings, including negatives.
 - **Ingestion (real SQLite file per test file):** every row of the scenario table run through the real pipeline; duplicate message id; duplicate content under a new id; the same bytes from a different sender (not a duplicate); 8 concurrent identical submissions; extractor throwing/hanging/invalid; blob missing; two workers racing; lease expiry; stale recovery; a **forced** lost auto-confirm race.
 - **Handlers:** signature forged/missing/tampered, malformed JSON, schema violations not echoing values, unknown sender, redelivery, oversize, retryable vs permanent media failures (503 vs 200), partial-batch redelivery, the transaction feed, and re-match including scope and previously-rejected pairs.
 - **Review actions:** happy path, double submit (row snapshot unchanged), transaction taken, concurrent confirms, forced races (both the pre-check path and the unique-index-only path, verified by mutation), cross-document rejection, scope mismatch, error mapping with no internals leaked.
-- **DB constraints:** the partial index (both error forms, update path, reconfirm after reject), every unique key, enum and money round-trips, seed idempotence.
+- **DB constraints:** single-connection handling under parallel transactions; the partial index (both error forms, update path, reconfirm after reject), every unique key, enum and money round-trips, seed idempotence.
 
 Beyond unit tests, the full flow was run against a real `next dev` server with HMAC secrets set, using `scripts/send-fixtures.sh`, and a confirm was performed through the browser UI and checked in the database.
 
@@ -268,10 +268,12 @@ Logging: structured events with a per-request `requestId` carried into backgroun
 
 ## 13. Dependencies
 
-- **Prisma is pinned to the stable 7.10.0.** The CLI's `latest` dist-tag currently points at an 8.0 release candidate. Prisma 7 requires a driver adapter (`@prisma/adapter-better-sqlite3`) and a generated client in `lib/generated/prisma`.
-- **`better-sqlite3` is pinned to `^12`** to match the adapter's own dependency. A top-level v13 produced two copies of a native module and a bundler warning.
+- **Prisma 6 (6.19), Zod 3 (3.25), Jest 29**, as the assignment's stack table requires. Prisma 6 talks to SQLite through its own engine: no driver adapter, no `prisma.config.ts`, and the generated client still lives in `lib/generated/prisma`. A relative `file:` URL is resolved against `prisma/`, hence `DATABASE_URL="file:../dev.db"`.
+- **SQLite concurrency:** `createPrismaClient` adds `connection_limit=1`. With Prisma 6's default pool, parallel read-then-write transactions each take their own connection and fail with `SQLITE_BUSY` (a 200-way stress took 94 s and 192 transactions failed with P2028/P1008, versus 0.1 s and none on one connection); one connection queues them. `__tests__/db/concurrency.test.ts` guards this.
+- **Zod 3 specifics:** the Claude extractor's JSON Schema comes from `zod-to-json-schema` (Zod 3 has no `z.toJSONSchema`). Zod 3 enum issues echo the submitted value, so `invalid()` in `lib/webhooks/http.ts` rebuilds that one message from the schema's own options.
+- **Jest 29** needs `ts-node` (to read `jest.config.ts`) and an explicit `jest-util` devDependency (ts-jest imports it and npm does not hoist it). The test schema is built once by running `prisma migrate deploy`, so no extra SQLite driver is needed.
 - **`npm audit` reports PostCSS advisories** inside the copy bundled by Next 15.5. The suggested fix is a major upgrade to Next 16; the assignment specifies Next 15. They concern processing attacker-controlled CSS at build time, which this app does not do.
-- `Next.js 15.5`, `next-safe-action 8`, `zod 4`, `date-fns 4`, `Jest 30` + `ts-jest 29`.
+- `Next.js 15.5`, `next-safe-action 8`, `date-fns 4`, `ts-jest 29`.
 
 ## 14. Production path
 

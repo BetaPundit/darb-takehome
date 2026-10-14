@@ -25,8 +25,7 @@ async function rejection(p: Promise<unknown>): Promise<Prisma.PrismaClientKnownR
 
 /** Columns of the violated unique constraint, so callers can tell which guarantee fired. */
 function violatedFields(err: Prisma.PrismaClientKnownRequestError): string[] {
-  const adapterError = err.meta?.driverAdapterError as { cause?: { constraint?: { fields?: string[] } } } | undefined;
-  return adapterError?.cause?.constraint?.fields ?? [];
+  return (err.meta?.target as string[] | undefined) ?? [];
 }
 
 let seq = 0;
