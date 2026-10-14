@@ -6,7 +6,8 @@ import { extractedDocumentSchema } from '@/lib/extraction/types';
 import type { Prisma } from '@/lib/generated/prisma/client';
 import { formatMinor } from '@/lib/money';
 import { CandidateActions } from './candidate-actions';
-import { flagText, formatRiyadh, reasonText } from './labels';
+import { FlagBadge } from './flag-badge';
+import { ALREADY_CONFIRMED_FLAG, flagLabel, flagText, formatRiyadh, reasonText } from './labels';
 
 export type ReviewDocument = Prisma.DocumentGetPayload<{ include: { matches: { include: { transaction: true } } } }>;
 
@@ -17,6 +18,13 @@ const signalsSchema = z.object({
   card: z.number().nullable(),
   flags: z.array(z.string()),
 });
+
+type Signals = z.infer<typeof signalsSchema>;
+/** The stored breakdown, or null if it is missing or in a shape this page does not know (shown as n/a, never trusted). */
+const parseSignals = (raw: unknown): Signals | null => {
+  const parsed = signalsSchema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
+};
 
 const pct = (n: number) => `${Math.round(n * 100)}%`;
 
@@ -48,25 +56,41 @@ function Extracted({ extraction }: { extraction: unknown }) {
   );
 }
 
-function Breakdown({ signals }: { signals: unknown }) {
-  const parsed = signalsSchema.safeParse(signals);
-  if (!parsed.success) return <span className="text-muted-foreground">n/a</span>;
-  const s = parsed.data;
+function Breakdown({ signals: s }: { signals: Signals | null }) {
+  if (s === null) return <span className="text-muted-foreground">n/a</span>;
+  // The duplicate flag is spelled out next to the actions (where Confirm would be), so it is not repeated here.
+  const flags = s.flags.filter((f) => f !== ALREADY_CONFIRMED_FLAG);
   return (
     <div className="space-y-1">
       <div className="text-xs text-muted-foreground">
         amount {pct(s.amount)} · merchant {pct(s.merchant)} · date {pct(s.date)} · card {s.card === null ? 'n/a' : pct(s.card)}
       </div>
-      {s.flags.length > 0 && (
+      {flags.length > 0 && (
         <div className="flex flex-wrap gap-1">
-          {s.flags.map((f) => (
-            <Badge key={f} variant="outline" className="h-auto whitespace-normal">
-              {flagText(f)}
-            </Badge>
+          {flags.map((f) => (
+            <FlagBadge key={f} label={flagLabel(f)} explanation={flagText(f)} />
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+function CandidateRow({ match: m }: { match: ReviewDocument['matches'][number] }) {
+  const signals = parseSignals(m.signals);
+  return (
+    <TableRow>
+      <TableCell>{m.transaction.merchantName}</TableCell>
+      <TableCell>{formatMinor(m.transaction.amountMinor, m.transaction.currency)}</TableCell>
+      <TableCell>{formatRiyadh(m.transaction.occurredAt)}</TableCell>
+      <TableCell className="font-medium">{pct(m.score)}</TableCell>
+      <TableCell className="whitespace-normal">
+        <Breakdown signals={signals} />
+      </TableCell>
+      <TableCell>
+        <CandidateActions matchId={m.id} possibleDuplicate={signals?.flags.includes(ALREADY_CONFIRMED_FLAG) ?? false} />
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -102,18 +126,7 @@ export function ReviewDocumentCard({ doc, actionable }: { doc: ReviewDocument; a
               </TableHeader>
               <TableBody>
                 {candidates.map((m) => (
-                  <TableRow key={m.id}>
-                    <TableCell>{m.transaction.merchantName}</TableCell>
-                    <TableCell>{formatMinor(m.transaction.amountMinor, m.transaction.currency)}</TableCell>
-                    <TableCell>{formatRiyadh(m.transaction.occurredAt)}</TableCell>
-                    <TableCell className="font-medium">{pct(m.score)}</TableCell>
-                    <TableCell className="whitespace-normal">
-                      <Breakdown signals={m.signals} />
-                    </TableCell>
-                    <TableCell>
-                      <CandidateActions matchId={m.id} />
-                    </TableCell>
-                  </TableRow>
+                  <CandidateRow key={m.id} match={m} />
                 ))}
               </TableBody>
             </Table>

@@ -30,7 +30,7 @@ const eslintConfig = [
         {
           patterns: [
             "@prisma/*",
-            "@/lib/db",
+            "@/lib/prisma",
             "@/lib/generated/*",
             "node:*",
             "fs",

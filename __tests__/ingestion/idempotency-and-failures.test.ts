@@ -152,8 +152,10 @@ describe('ingestion: idempotency, failures, concurrency, recovery', () => {
 
       expect(results.every((r) => r.status === 'DONE')).toBe(true); // nobody threw
       expect(await db.documentMatch.count({ where: { transactionId: 'txn_exact', status: { in: ['AUTO_CONFIRMED', 'CONFIRMED'] } } })).toBe(1);
-      const statuses = (await db.document.findMany({ where: { id: { in: ids } } })).map((d) => d.status).sort();
-      expect(statuses).toEqual(['MATCHED', 'UNMATCHED']);
+      const docs = await db.document.findMany({ where: { id: { in: ids } } });
+      expect(docs.map((d) => d.status).sort()).toEqual(['MATCHED', 'NEEDS_REVIEW']);
+      // the loser is a possible duplicate of the winner: it goes to review, it is not dropped
+      expect(docs.find((d) => d.status === 'NEEDS_REVIEW')).toMatchObject({ matchReason: 'POSSIBLE_DUPLICATE' });
     });
 
     it('a fresh lease is respected, an expired lease is reclaimed', async () => {

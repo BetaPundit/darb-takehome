@@ -119,5 +119,8 @@ export const consoleLogger: Logger = createLogger({
   colors: Boolean(process.stdout?.isTTY) && !process.env.NO_COLOR,
 });
 
+/** The app-wide logger under the name the project boilerplate uses: `import { log } from '@/lib/logger'`. */
+export const log = consoleLogger;
+
 const noop = () => {};
 export const silentLogger: Logger = { info: noop, warn: noop, error: noop, child: () => silentLogger };

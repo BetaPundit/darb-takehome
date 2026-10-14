@@ -9,7 +9,9 @@ export type MatchFlag =
   | 'CARD_MISMATCH'
   | 'DATE_MISSING'
   | 'DATE_OFFSET'
-  | 'AMOUNT_BELOW_CHARGE';
+  | 'AMOUNT_BELOW_CHARGE'
+  /** Set by the matcher, not by a signal: the candidate transaction already has a confirmed document. */
+  | 'ALREADY_CONFIRMED';
 
 /** Round to 4 decimals. Applied to every signal and score BEFORE thresholds are compared (0.35+0.3+0.2 !== 0.85 in floats). */
 export function round4(x: number): number {

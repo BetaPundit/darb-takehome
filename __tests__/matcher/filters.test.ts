@@ -27,19 +27,20 @@ describe('hard filters', () => {
     expect(matchDocument({ document: doc(), sender: WA, candidates: [] })).toEqual(NO_CANDIDATES);
   });
 
-  it('a transaction that already has a confirmed match is excluded, however good the match', () => {
+  it('a transaction that already has a confirmed match is NOT filtered out: it is offered for review as a possible duplicate (see duplicates.test.ts)', () => {
     const r = matchDocument({ document: doc(), sender: WA, candidates: [txn({ alreadyConfirmed: true })] });
-    expect(r).toEqual(NO_CANDIDATES);
+    expect(r).toMatchObject({ outcome: 'NEEDS_REVIEW', reason: 'POSSIBLE_DUPLICATE' });
+    expect(r.candidates.map((c) => c.transactionId)).toEqual(['t1']);
   });
 
-  it('a confirmed transaction does not stop the open twin from matching, and does not count as runner-up', () => {
+  it('a confirmed twin does not silently hand the match to the open one: the pair goes to review, open one first', () => {
     const r = matchDocument({
       document: doc(),
       sender: WA,
       candidates: [txn({ id: 'a', alreadyConfirmed: true }), txn({ id: 'b' })],
     });
-    expect(r).toMatchObject({ outcome: 'AUTO_MATCHED', reason: 'CLEAR_WINNER' });
-    expect(r.candidates.map((c) => c.transactionId)).toEqual(['b']);
+    expect(r).toMatchObject({ outcome: 'NEEDS_REVIEW', reason: 'AMBIGUOUS' });
+    expect(r.candidates.map((c) => c.transactionId)).toEqual(['b', 'a']);
   });
 
   it('currency mismatch is a hard filter even when the numbers are identical', () => {
@@ -96,9 +97,13 @@ describe('scope filter: EMAIL (clientId must equal the sender client)', () => {
     expect(matchDocument({ document: doc(), sender: email('c2'), candidates: [txn()] })).toEqual(NO_CANDIDATES);
   });
 
-  it('seeded: the other client\'s ADNOC invoice does not match alnoor transactions and vice versa', () => {
+  it('seeded: the other client\'s ADNOC invoice never reaches the desert transaction, and nothing of alnoor\'s is a confident match', () => {
     const r = matchDocument({ document: SCENARIO_DOCS.email_exact, sender: SENDERS.alnoor_email, candidates: SEEDED_TXNS });
-    expect(r).toMatchObject({ outcome: 'UNMATCHED', reason: 'NO_PLAUSIBLE_CANDIDATE' });
+    expect(r.candidates.map((c) => c.transactionId)).not.toContain('txn_email');
+    expect(r.outcome).not.toBe('AUTO_MATCHED');
+    // Not UNMATCHED any more, by coincidence of the seed: 250.00 + 15% VAT is exactly txn_alfanar's 287.50, so alnoor's
+    // own Alfanar charge is a weak, reviewable (0.68) candidate. The invariant under test is the scope, not the emptiness.
+    expect(r.candidates.map((c) => c.transactionId)).toEqual(['txn_alfanar']);
   });
 
   it('out-of-scope twins never become runner-ups: they cannot create AMBIGUOUS', () => {

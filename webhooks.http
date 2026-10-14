@@ -2,6 +2,7 @@
 ### Start the app first:  npm run db:seed && npm run dev
 ### These run UNSIGNED, which the server accepts only when no secrets are configured (dev mode).
 ### With secrets set, use scripts/send-fixtures.sh instead: it signs each body with HMAC-SHA256.
+### Sending the same receipt twice by different routes (WhatsApp, then email) is not an error: the second one goes to review as a possible duplicate.
 ### The "files" are fixtures/documents/<name>.fixture (bytes: the ASCII string "DARB-FIXTURE:<name>"); the mock extractor looks them up by SHA-256.
 ### WhatsApp media ids (media_4471, ...) are resolved through fixtures/media-map.json. Print every fixture's hash/base64:  npx tsx scripts/print-fixtures.ts
 
@@ -120,3 +121,90 @@ Content-Type: application/json
   "currency": "SAR",
   "occurredAt": "2026-10-02T10:00:00+03:00"
 }]
+
+
+### The assignment's own sample payloads. The bodies are fixtures/webhooks/*.json (real bytes instead of the <base64> placeholder).
+
+### 10. Assignment email sample: `to` is a plain string, from billing@alfanar-fuel.com.sa (a demo mailbox of Al Noor in the seed)
+###     -> 200 accepted; the tax invoice is OCR'd and AUTO_MATCHED to txn_alfanar ("ALFANAR FUEL ST 04 RUH" = "Alfanar Fuel Station", 287.50)
+POST {{base}}/api/webhooks/email
+Content-Type: application/json
+
+{
+  "messageId": "msg_8f2a1",
+  "from": "billing@alfanar-fuel.com.sa",
+  "to": "receipts@darb.example.com",
+  "subject": "Tax Invoice #INV-99812",
+  "receivedAt": "2025-06-14T09:21:00Z",
+  "attachments": [
+    {
+      "filename": "invoice-99812.pdf",
+      "contentType": "application/pdf",
+      "contentBase64": "REFSQi1GSVhUVVJFOmFsZmFuYXJfaW52b2ljZQ=="
+    }
+  ]
+}
+
+### 11. The same sample with the literal "<base64>" placeholder   -> 400 naming attachments.0.contentBase64 (never a 500)
+POST {{base}}/api/webhooks/email
+Content-Type: application/json
+
+{"messageId":"msg_8f2a1","from":"billing@alfanar-fuel.com.sa","to":"receipts@darb.example.com","subject":"Tax Invoice #INV-99812","receivedAt":"2025-06-14T09:21:00Z","attachments":[{"filename":"invoice-99812.pdf","contentType":"application/pdf","contentBase64":"<base64>"}]}
+
+### 12. Assignment WhatsApp sample: no object / entry.id / field / messaging_product / metadata, from 966551234567
+###     -> 200 accepted; that number is not a seeded driver, so the document is stored and ends UNMATCHED (NO_CANDIDATES_IN_SCOPE)
+POST {{base}}/api/webhooks/whatsapp
+Content-Type: application/json
+
+{
+  "entry": [
+    {
+      "changes": [
+        {
+          "value": {
+            "messages": [
+              {
+                "id": "wamid.HBgMOTY2NT...",
+                "from": "966551234567",
+                "timestamp": "1718356881",
+                "type": "image",
+                "image": {
+                  "id": "media_4471",
+                  "mime_type": "image/jpeg",
+                  "sha256": "a3f1c9..."
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
+
+### 13. A restaurant receipt of 57.50 against a card charge of 63.25 (tip), from driver +966 50 222 2222
+###     -> NEEDS_REVIEW (TIP_SUSPECTED) for txn_restaurant; open http://localhost:3000/review
+POST {{base}}/api/webhooks/whatsapp
+Content-Type: application/json
+
+{
+  "entry": [
+    {
+      "changes": [
+        {
+          "value": {
+            "messages": [
+              {
+                "id": "wamid.HBgMOTY2NT.tip",
+                "from": "966502222222",
+                "timestamp": "1718356881",
+                "type": "image",
+                "image": { "id": "media_4485", "mime_type": "image/jpeg" }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

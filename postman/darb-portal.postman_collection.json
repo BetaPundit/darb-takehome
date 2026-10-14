@@ -1024,6 +1024,151 @@
           ]
         }
       ]
+    },
+    {
+      "name": "Assignment sample payloads",
+      "item": [
+        {
+          "name": "Email sample (string `to`, from billing@alfanar-fuel.com.sa) -> AUTO_MATCHED to txn_alfanar",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"accepted\", () => pm.expect(j.status).to.eql(\"accepted\"));",
+                  "pm.test(\"one document entry\", () => pm.expect(j.documents).to.have.lengthOf(1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "email"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"messageId\":\"msg_{{runId}}\",\"from\":\"billing@alfanar-fuel.com.sa\",\"to\":\"receipts@darb.example.com\",\"subject\":\"Tax Invoice #INV-99812\",\"receivedAt\":\"2025-06-14T09:21:00Z\",\"attachments\":[{\"filename\":\"invoice-99812.pdf\",\"contentType\":\"application/pdf\",\"contentBase64\":\"REFSQi1GSVhUVVJFOmFsZmFuYXJfaW52b2ljZQ==\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The assignment's email payload, with real bytes (fixtures/documents/alfanar_invoice.fixture) in place of the <base64> placeholder and a unique messageId. `to` is a plain string, as in the assignment. billing@alfanar-fuel.com.sa is registered as a demo mailbox of Al Noor (seed), so the tax invoice is OCR'd and auto-matched to txn_alfanar (ALFANAR FUEL ST 04 RUH, 287.50). Run against a freshly seeded database: the same bytes sent again are a duplicate."
+          }
+        },
+        {
+          "name": "Email sample with the literal <base64> placeholder -> clean 400 naming the field",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400, not a 500\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"names attachments.0.contentBase64\", () => pm.expect(pm.response.text()).to.include(\"attachments.0.contentBase64\"));",
+                  "pm.test(\"the submitted value is never echoed\", () => pm.expect(pm.response.text()).to.not.include(\"<base64>\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "email"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"messageId\":\"msg_8f2a1\",\"from\":\"billing@alfanar-fuel.com.sa\",\"to\":\"receipts@darb.example.com\",\"subject\":\"Tax Invoice #INV-99812\",\"receivedAt\":\"2025-06-14T09:21:00Z\",\"attachments\":[{\"filename\":\"invoice-99812.pdf\",\"contentType\":\"application/pdf\",\"contentBase64\":\"<base64>\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The assignment's email sample character for character. The attachment is not valid base64, so the webhook answers 400 and stores nothing."
+          }
+        },
+        {
+          "name": "WhatsApp sample (no object / metadata, unknown driver 966551234567) -> accepted, document UNMATCHED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"accepted\", () => pm.expect(j.status).to.eql(\"accepted\"));",
+                  "pm.test(\"a document count is reported\", () => pm.expect(j.documents).to.be.a(\"number\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/whatsapp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "whatsapp"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"entry\":[{\"changes\":[{\"value\":{\"messages\":[{\"id\":\"wamid.HBgMOTY2NT.{{runId}}\",\"from\":\"966551234567\",\"timestamp\":\"1718356881\",\"type\":\"image\",\"image\":{\"id\":\"media_4471\",\"mime_type\":\"image/jpeg\",\"sha256\":\"a3f1c9...\"}}]}}]}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The assignment's WhatsApp payload: no `object`, no `entry.id`, no `field`, no `messaging_product`, no `metadata`, and the elided sha256. The wamid is made unique per run. The number is not a seeded driver, so the document is stored, extracted and ends UNMATCHED (NO_CANDIDATES_IN_SCOPE); documents is 0 if this exact photo was already sent from that number."
+          }
+        }
+      ]
     }
   ]
 }

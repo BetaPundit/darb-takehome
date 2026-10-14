@@ -20,7 +20,7 @@ describe('lost auto-confirm race', () => {
   beforeEach(() => seedDatabase(db));
   afterEach(() => jest.restoreAllMocks());
 
-  it('re-loads, sees the transaction taken, and ends UNMATCHED with exactly one confirmed match', async () => {
+  it('re-loads, sees the transaction taken, and ends in review as a possible duplicate with exactly one confirmed match', async () => {
     const extractor: DocumentExtractor = { extract: async () => exactExtraction };
     const { service } = makeService(db, { extractor });
     const [r] = await service.accept({ source: 'WHATSAPP', externalMessageId: 'race', scope: DRIVER_1, attachments: [{ fileName: 'a.jpg', mimeType: 'image/jpeg', bytes: Buffer.from('race') }] });
@@ -42,10 +42,13 @@ describe('lost auto-confirm race', () => {
     const result = await service.processDocument(r!.documentId);
 
     expect(injected).toBe(true);
-    expect(result).toMatchObject({ status: 'DONE', outcome: 'UNMATCHED' });
-    expect(await db.documentMatch.count({ where: { transactionId: 'txn_exact', status: { in: ['AUTO_CONFIRMED', 'CONFIRMED'] } } })).toBe(1);
+    expect(result).toMatchObject({ status: 'DONE', outcome: 'NEEDS_REVIEW', reason: 'POSSIBLE_DUPLICATE' });
+    expect(await db.documentMatch.count({ where: { transactionId: 'txn_exact', status: { in: ['AUTO_CONFIRMED', 'CONFIRMED'] } } })).toBe(1); // the rival's, not ours
     const doc = await db.document.findUniqueOrThrow({ where: { id: r!.documentId }, include: { matches: true } });
-    expect(doc.status).toBe('UNMATCHED');
-    expect(doc.matches).toHaveLength(0); // nothing half-written
+    expect(doc).toMatchObject({ status: 'NEEDS_REVIEW', matchReason: 'POSSIBLE_DUPLICATE' });
+    // the transaction is now confirmed for the rival, so our copy is offered to a reviewer as an open, flagged candidate
+    expect(doc.matches).toHaveLength(1);
+    expect(doc.matches[0]).toMatchObject({ transactionId: 'txn_exact', status: 'CANDIDATE' });
+    expect((doc.matches[0]!.signals as { flags: string[] }).flags).toEqual(['ALREADY_CONFIRMED']);
   });
 });

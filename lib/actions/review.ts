@@ -3,8 +3,8 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { confirmMatchCore, rejectMatchCore } from '@/lib/actions/review-core';
-import { actionClient } from '@/lib/actions/safe-action';
-import { db } from '@/lib/db';
+import { actionClient } from '@/lib/actions/safe-action-client';
+import { db } from '@/lib/prisma';
 import { consoleLogger } from '@/lib/logger';
 
 // Not .cuid(): ids are opaque to this layer (the seeded match id is not a cuid).

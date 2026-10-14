@@ -9,6 +9,7 @@ describe('order independence', () => {
       ['tip', SENDERS.alnoor_d2], ['rounding', SENDERS.alnoor_d2], ['prevat', SENDERS.alnoor_d1],
       ['no_transaction', SENDERS.alnoor_email], ['low_confidence', SENDERS.alnoor_email], ['email_exact', SENDERS.desert_email],
       ['arabic', SENDERS.desert_email], ['already_confirmed', SENDERS.alnoor_email],
+      ['alfanar_invoice', SENDERS.alnoor_email], ['restaurant_tip', SENDERS.alnoor_d2],
     ] as const;
     for (const [name, sender] of cases) {
       const baseline = matchDocument({ document: SCENARIO_DOCS[name], sender, candidates: SEEDED_TXNS });

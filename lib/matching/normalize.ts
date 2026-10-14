@@ -40,11 +40,17 @@ const NOISE_WORDS = [
   'llc', 'ltd', 'co', 'company', 'est', 'establishment', 'trading', 'corp', 'inc',
   'شركة', 'مؤسسة', 'المحدودة',
   // branch / location noise. NOT "station": it is part of real names (SASCO Station).
-  'branch', 'br', 'riyadh', 'jeddah', 'dammam', 'ksa',
+  // ruh / jed / dmm are the city codes card acquirers print ("ALFANAR FUEL ST 04 RUH").
+  'branch', 'br', 'riyadh', 'jeddah', 'dammam', 'khobar', 'ksa', 'ruh', 'jed', 'dmm',
   'فرع', 'الرياض', 'جدة', 'الدمام',
 ];
 // Noise words go through the same folding as input tokens so spelling variants match.
 const NOISE = new Set(NOISE_WORDS.map((w) => stripArticle(foldChars(w))));
+
+// Acquirer abbreviations expanded to the word a receipt prints. Whole tokens only ("st" never touches "starbucks").
+// A Map, not an object literal: a merchant token like "constructor" must not find an inherited property.
+// Accepted limitation: a standalone "St" that means something else ("St Regis") is also read as "station".
+const ABBREVIATIONS = new Map([['st', 'station']]);
 
 /** Normalized tokens of a merchant name: folded, de-noised, article-stripped, digits-only tokens removed. */
 export function normalizeMerchantTokens(raw: string): string[] {
@@ -58,7 +64,7 @@ export function normalizeMerchantTokens(raw: string): string[] {
     if (token === 'al' || token === 'el') continue; // detached article: "Al Baik"
     const stripped = stripArticle(token);
     if (stripped === '' || NOISE.has(stripped)) continue;
-    tokens.push(stripped);
+    tokens.push(ABBREVIATIONS.get(stripped) ?? stripped);
   }
   return tokens;
 }

@@ -49,7 +49,9 @@ const attachmentSchema = z.object({
 export const emailWebhookSchema = z.object({
   messageId: z.string().trim().min(1).max(255),
   from: z.string().email().transform((s) => s.toLowerCase()),
-  to: z.array(z.string().email()).min(1),
+  // The assignment's sample has a single address as a string; providers that list recipients send an array.
+  // Normalised to a list so nothing downstream sees two shapes. Nothing reads it yet; it is validated, not trusted.
+  to: z.preprocess((v) => (typeof v === 'string' ? [v] : v), z.array(z.string().email()).min(1)),
   subject: z.string().max(1000).optional(),
   receivedAt: z.string().datetime({ offset: true }).optional(),
   attachments: z.array(attachmentSchema).min(1).max(10),
@@ -119,17 +121,21 @@ const otherMessageSchema = z.object({
 
 const messageSchema = z.union([imageMessageSchema, documentMessageSchema, otherMessageSchema]);
 
+// The envelope extras (object, entry.id, field, messaging_product, metadata) are optional because the assignment's own
+// sample payload has none of them; Meta's real deliveries always do. What IS present is still validated (object must be
+// 'whatsapp_business_account', the rest must be strings), and the message shapes below are unchanged and strict.
+// Unknown keys are ignored (zod strips them).
 export const whatsappWebhookSchema = z.object({
-  object: z.literal('whatsapp_business_account'),
+  object: z.literal('whatsapp_business_account').optional(),
   entry: z.array(
     z.object({
-      id: z.string(),
+      id: z.string().optional(),
       changes: z.array(
         z.object({
-          field: z.string(),
+          field: z.string().optional(),
           value: z.object({
-            messaging_product: z.string(),
-            metadata: z.object({ phone_number_id: z.string() }).passthrough(),
+            messaging_product: z.string().optional(),
+            metadata: z.object({ phone_number_id: z.string() }).passthrough().optional(),
             messages: z.array(messageSchema).optional(),
             statuses: z.array(z.unknown()).optional(),
           }),

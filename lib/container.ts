@@ -1,5 +1,5 @@
 import { after } from 'next/server';
-import { db } from '@/lib/db';
+import { db } from '@/lib/prisma';
 import { getEnv } from '@/lib/env';
 import { createExtractor } from '@/lib/extraction';
 import { consoleLogger, errorFields } from '@/lib/logger';

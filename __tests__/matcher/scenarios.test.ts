@@ -79,11 +79,29 @@ describe('seeded scenarios (mirror of SCENARIOS.md)', () => {
     }
   });
 
-  it('already_confirmed: txn_confirmed is excluded, nothing else is plausible -> UNMATCHED', () => {
-    expect(run('already_confirmed', SENDERS.alnoor_d1)).toEqual({ outcome: 'UNMATCHED', reason: 'NO_PLAUSIBLE_CANDIDATE', candidates: [] });
+  it('alfanar_invoice: the assignment\'s sample tax invoice ("Alfanar Fuel Station") matches the acquirer name "ALFANAR FUEL ST 04 RUH" -> AUTO -> txn_alfanar', () => {
+    const r = run('alfanar_invoice', SENDERS.alnoor_email);
+    expect(r).toMatchObject({ outcome: 'AUTO_MATCHED', reason: 'CLEAR_WINNER' });
+    expect(ids(r)).toEqual(['txn_alfanar']);
+    expect(r.candidates[0]).toMatchObject({ score: 0.9, flags: [], signals: { amount: 1, merchant: 1, date: 1, card: null } });
   });
 
-  it('already_confirmed proves the exclusion is what causes UNMATCHED: un-confirmed it would be an AUTO match', () => {
+  it('restaurant_tip: the assignment\'s 57.50 receipt vs the 63.25 charge (10% tip) -> NEEDS_REVIEW / BELOW_AUTO_THRESHOLD with TIP_SUSPECTED', () => {
+    const r = run('restaurant_tip', SENDERS.alnoor_d2);
+    expect(r).toMatchObject({ outcome: 'NEEDS_REVIEW', reason: 'BELOW_AUTO_THRESHOLD' });
+    expect(ids(r)).toEqual(['txn_restaurant']);
+    expect(r.candidates[0]!.flags).toEqual(['TIP_SUSPECTED']);
+    expect(r.candidates[0]!.score).toBeCloseTo(0.73125, 3); // 0.45 * 0.625 + 0.25 + 0.20
+  });
+
+  it('already_confirmed: txn_confirmed already has a confirmed document -> NEEDS_REVIEW / POSSIBLE_DUPLICATE, flagged, never AUTO', () => {
+    const r = run('already_confirmed', SENDERS.alnoor_d1);
+    expect(r).toMatchObject({ outcome: 'NEEDS_REVIEW', reason: 'POSSIBLE_DUPLICATE' });
+    expect(ids(r)).toEqual(['txn_confirmed']);
+    expect(r.candidates[0]).toMatchObject({ score: 0.9, flags: ['ALREADY_CONFIRMED'] });
+  });
+
+  it('already_confirmed proves the flag is what changes the route: un-confirmed it would be an AUTO match', () => {
     const open = SEEDED_TXNS.map((t) => (t.id === 'txn_confirmed' ? { ...t, alreadyConfirmed: false } : t));
     const r = matchDocument({ document: SCENARIO_DOCS.already_confirmed, sender: SENDERS.alnoor_d1, candidates: open });
     expect(r).toMatchObject({ outcome: 'AUTO_MATCHED' });

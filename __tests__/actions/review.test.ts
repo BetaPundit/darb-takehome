@@ -207,6 +207,83 @@ describe('confirmMatchCore', () => {
   });
 });
 
+describe('possible duplicates (a candidate whose transaction already has a confirmed document)', () => {
+  /** WhatsApp `exact` is auto-confirmed to txn_exact; the same receipt by email is then a possible duplicate in review. */
+  async function duplicateDoc() {
+    const { service } = makeService(db);
+    const first = await sendFixture(service, 'exact', DRIVER_1);
+    const second = await sendFixture(service, 'exact', ALNOOR_EMAIL);
+    expect(await docStatus(second.documentId)).toBe('NEEDS_REVIEW');
+    return { first: first.documentId, second: second.documentId };
+  }
+
+  it('confirming it is refused with TRANSACTION_ALREADY_CONFIRMED and writes nothing: the document stays NEEDS_REVIEW', async () => {
+    const { first, second } = await duplicateDoc();
+    const dup = await matchOf(second, 'txn_exact');
+    const before = await snapshot();
+
+    await rejectsWith(confirmMatchCore(db, dup.id), 'TRANSACTION_ALREADY_CONFIRMED');
+
+    expect(await snapshot()).toEqual(before);
+    expect(await docStatus(second)).toBe('NEEDS_REVIEW');
+    expect(await matchOf(second, 'txn_exact')).toMatchObject({ status: 'CANDIDATE', decidedBy: null });
+    expect(await matchOf(first, 'txn_exact')).toMatchObject({ status: 'AUTO_CONFIRMED' }); // the original is untouched
+    expect(await docStatus(first)).toBe('MATCHED');
+  });
+
+  it('rejecting it works, and with no candidates left the document becomes UNMATCHED / ALL_CANDIDATES_REJECTED', async () => {
+    const { first, second } = await duplicateDoc();
+    const dup = await matchOf(second, 'txn_exact');
+
+    const result = await rejectMatchCore(db, dup.id);
+
+    expect(result).toEqual({ matchId: dup.id, documentStatus: 'UNMATCHED' });
+    expect(await matchOf(second, 'txn_exact')).toMatchObject({ status: 'REJECTED', decidedBy: 'reviewer' });
+    expect(await db.document.findUniqueOrThrow({ where: { id: second } })).toMatchObject({ status: 'UNMATCHED', matchReason: 'ALL_CANDIDATES_REJECTED' });
+    expect(await matchOf(first, 'txn_exact')).toMatchObject({ status: 'AUTO_CONFIRMED' });
+  });
+
+  it('a rejected duplicate pair is never offered again by a re-match', async () => {
+    const { second } = await duplicateDoc();
+    await rejectMatchCore(db, (await matchOf(second, 'txn_exact')).id);
+
+    const { rematchForTransactions } = await import('@/lib/services/rematch');
+    const { silentLogger } = await import('@/lib/logger');
+    const extra = await db.transaction.create({ data: { externalRef: 'late', clientId: 'client_alnoor', driverPhone: '+966509999999', merchantName: 'X', amountMinor: 1, occurredAt: new Date('2026-10-01T06:15:00Z') } });
+    await rematchForTransactions(db, [extra.id], new Date('2026-10-06T08:00:00Z'), silentLogger);
+
+    expect(await docStatus(second)).toBe('UNMATCHED');
+    expect(await db.documentMatch.count({ where: { documentId: second, status: 'CANDIDATE' } })).toBe(0);
+  });
+
+  it('next to an open candidate: the open one can be confirmed, which rejects the duplicate sibling; the duplicate itself cannot be confirmed', async () => {
+    const { service } = makeService(db);
+    await sendFixture(service, 'ambiguous_last4', DRIVER_1); // auto-confirms txn_amb_1
+    const { documentId } = await sendFixture(service, 'ambiguous', DRIVER_1); // candidates: txn_amb_2 (open), txn_amb_1 (already confirmed)
+    const open = await matchOf(documentId, 'txn_amb_2');
+    const dup = await matchOf(documentId, 'txn_amb_1');
+
+    const before = await snapshot();
+    await rejectsWith(confirmMatchCore(db, dup.id), 'TRANSACTION_ALREADY_CONFIRMED');
+    expect(await snapshot()).toEqual(before);
+
+    await confirmMatchCore(db, open.id);
+
+    expect(await docStatus(documentId)).toBe('MATCHED');
+    expect(await matchOf(documentId, 'txn_amb_2')).toMatchObject({ status: 'CONFIRMED', decidedBy: 'reviewer' });
+    expect(await matchOf(documentId, 'txn_amb_1')).toMatchObject({ status: 'REJECTED', decidedBy: 'system:sibling-confirmed' });
+    expect(await db.documentMatch.count({ where: { transactionId: 'txn_amb_1', status: { in: ['AUTO_CONFIRMED', 'CONFIRMED'] } } })).toBe(1);
+  });
+
+  it('a duplicate candidate row whose flag is missing (the stored flag is only a UI hint) is still refused by the server', async () => {
+    const { second } = await duplicateDoc();
+    await db.documentMatch.update({ where: { documentId_transactionId: { documentId: second, transactionId: 'txn_exact' } }, data: { signals: { amount: 1, merchant: 1, date: 1, card: null, flags: [] } } });
+
+    await rejectsWith(confirmMatchCore(db, (await matchOf(second, 'txn_exact')).id), 'TRANSACTION_ALREADY_CONFIRMED');
+    expect(await docStatus(second)).toBe('NEEDS_REVIEW');
+  });
+});
+
 describe('rejectMatchCore', () => {
   it('rejecting one of several candidates keeps the document in NEEDS_REVIEW', async () => {
     const docId = await ambiguousDoc();

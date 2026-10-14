@@ -100,6 +100,11 @@ export const SEEDED_TXNS: readonly MatcherCandidate[] = [
   seeded('txn_confirmed', ALNOOR, D1, 'SASCO STATION 118', 8000, '2026-10-01', '07:30', null, true),
   seeded('txn_email', DESERT, D3, 'ADNOC DISTRIBUTION', 25000, '2026-10-04', '15:20', null),
   seeded('txn_arabic', DESERT, D3, 'مطعم البيك', 3500, '2026-10-05', '20:10', null),
+  seeded('txn_alfanar', ALNOOR, D1, 'ALFANAR FUEL ST 04 RUH', 28750, '2026-10-06', '11:05', null),
+  seeded('txn_restaurant', ALNOOR, D2, 'AL ROMANSIAH RESTAURANT', 6325, '2026-10-07', '14:20', null),
+  seeded('txn_noise_1', DESERT, D3, 'EXTRA STORES 33', 15900, '2026-10-05', '09:00', null),
+  seeded('txn_noise_2', ALNOOR, D2, 'UBER TRIP', 4100, '2026-10-06', '19:30', null),
+  seeded('txn_noise_3', ALNOOR, D1, 'PANDA HYPER 07', 31250, '2026-10-02', '16:10', null),
 ];
 
 /** The OCR output of every fixture in fixtures/extractions, so the matcher scenarios cannot drift from the files. */

@@ -27,6 +27,31 @@ describe('normalizeMerchant: Latin names', () => {
     expect(normalizeMerchant('Aramco Retail Station 0412')).toBe('aramco retail station');
   });
 
+  it('expands the card-network abbreviation "ST" to "station" and drops airport-code style city noise (the assignment\'s own merchant pair)', () => {
+    // (the glued article is stripped from "alfanar" on both sides, so both read "fanar": see the article rule above)
+    expect(normalizeMerchant('ALFANAR FUEL ST 04 RUH')).toBe('fanar fuel station');
+    expect(normalizeMerchant('Alfanar Fuel Station')).toBe('fanar fuel station');
+    expect(normalizeMerchant('JARIR BOOKSTORE JED')).toBe('jarir bookstore');
+    expect(normalizeMerchant('NADEC FOODS DMM')).toBe('nadec foods');
+    expect(normalizeMerchant('PANDA HYPER KHOBAR')).toBe('panda hyper');
+    expect(normalizeMerchant('PANDA HYPER AL KHOBAR')).toBe('panda hyper');
+    expect(normalizeMerchant('SASCO ST. 118')).toBe('sasco station'); // punctuation is stripped before the whole-token check
+  });
+
+  it('abbreviation and city rules match WHOLE tokens only: the same letters inside a word are left alone', () => {
+    expect(normalizeMerchant('Starbucks')).toBe('starbucks');
+    expect(normalizeMerchant('STC Pay')).toBe('stc pay');
+    expect(normalizeMerchant('Westside First Stop')).toBe('westside first stop');
+    expect(normalizeMerchant('Ruhan Cafe')).toBe('ruhan cafe');
+    expect(normalizeMerchant('Jedda Cafe')).toBe('jedda cafe');
+    expect(normalizeMerchant('constructor st')).toBe('constructor station'); // a plain-object lookup would have returned a function here
+    expect(normalizeMerchant('toString valueOf')).toBe('tostring valueof');
+  });
+
+  it('KNOWN LIMITATION: a standalone "St" that means something else (St. Regis) is read as "station"', () => {
+    expect(normalizeMerchant('St Regis')).toBe('station regis');
+  });
+
   it('drops apostrophes without splitting the word, and folds full-width forms (NFKC)', () => {
     expect(normalizeMerchant("McDonald's")).toBe('mcdonalds');
     expect(normalizeMerchant('ＡＬＢＡＩＫ')).toBe('baik');

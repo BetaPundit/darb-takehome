@@ -24,13 +24,14 @@ npm run dev                  # http://localhost:3000  (redirects to /review)
 With the dev server running, in a second terminal:
 
 ```bash
-./scripts/send-fixtures.sh   # sends the demo fixtures through the real webhooks, then prints the outcome of each
+./scripts/send-fixtures.sh   # sends the demo fixtures and the assignment's two sample payloads through the real webhooks, then prints the outcome of each
 ```
 
 Or use [webhooks.http](webhooks.http) (VS Code REST Client / JetBrains), or import
 [postman/darb-portal.postman_collection.json](postman/darb-portal.postman_collection.json) into Postman. The collection
-has 21 requests with assertions, covers every endpoint and the failure cases (duplicates, unknown sender, invalid
-payloads, forged signature, oversized/fractional values), and signs each POST body for you. To sign, set the collection
+has 24 requests with assertions, covers every endpoint and the failure cases (duplicates, unknown sender, invalid
+payloads, forged signature, oversized/fractional values), has an "Assignment sample payloads" folder with the assignment's
+own email and WhatsApp bodies (and the email with its literal `<base64>` placeholder, which is a clean 400), and signs each POST body for you. To sign, set the collection
 variables `emailSecret`, `whatsappSecret`, `transactionsSecret`, `verifyToken` to the same values the server was started
 with and `serverHasSecrets` to `true`; leave them empty for an unsigned dev server. Change `runId` to send fresh message ids.
 Two ready-made environments sit next to it. Import the collection and **one** environment, and select it:
@@ -54,12 +55,21 @@ npm run dev                      # terminal 1 (inherits the variables)
 ```
 
 The script is safe to re-run (message ids are unique per run). To start from a clean slate run `npm run db:seed` again;
-it wipes and re-creates the demo data.
+it wipes and re-creates the demo data. On a freshly seeded database the results table should show, among others:
+
+| Sent | Result |
+|---|---|
+| the `alfanar_invoice` email, in the assignment's own shape (from `billing@alfanar-fuel.com.sa`) | `MATCHED`, auto-confirmed to `txn_alfanar` |
+| `restaurant_tip` by WhatsApp (57.50 against 63.25) | `NEEDS_REVIEW` / `BELOW_AUTO_THRESHOLD`, flag "tip suspected", candidate `txn_restaurant` |
+| `already_confirmed` (its transaction already has a confirmed document) | `NEEDS_REVIEW` / `POSSIBLE_DUPLICATE`, candidate `txn_confirmed`, Confirm hidden |
+| `exact` by email after it was matched by WhatsApp | `NEEDS_REVIEW` / `POSSIBLE_DUPLICATE`, candidate `txn_exact` (cross-channel duplicate) |
+| the assignment's WhatsApp sample (number `966551234567` is not a seeded driver) | `UNMATCHED` / `NO_CANDIDATES_IN_SCOPE` |
+| `no_transaction`, then its card transaction through the feed | `UNMATCHED`, then `MATCHED` by the re-match |
 
 ## Tests and checks
 
 ```bash
-npm test             # 741 tests, ~1 s. Matcher and helpers need no DB; ingestion/handler/action tests use a real SQLite file per test file
+npm test             # 846 tests, ~1 s. Matcher and helpers need no DB; ingestion/handler/action tests use a real SQLite file per test file
 npm run typecheck
 npm run lint
 npm run build
@@ -69,11 +79,11 @@ npm run build
 
 | Endpoint | Purpose | Signature header (HMAC-SHA256 of the raw body) |
 |---|---|---|
-| `POST /api/webhooks/email` | Provider-neutral JSON: `messageId`, `from`, `to`, `attachments[]` (base64) | `x-signature-256: sha256=<hex>` |
+| `POST /api/webhooks/email` | Provider-neutral JSON: `messageId`, `from`, `to` (one address as a string, as in the assignment, or a list), `attachments[]` (base64) | `x-signature-256: sha256=<hex>` |
 | `GET /api/webhooks/whatsapp` | Meta subscription handshake (`hub.challenge`) | n/a (verify token) |
-| `POST /api/webhooks/whatsapp` | Meta Cloud API envelope, image and document messages | `x-hub-signature-256: sha256=<hex>` |
+| `POST /api/webhooks/whatsapp` | Meta Cloud API envelope, image and document messages. The envelope extras (`object`, `entry[].id`, `field`, `messaging_product`, `metadata`) are optional, because the assignment's sample has none of them | `x-hub-signature-256: sha256=<hex>` |
 | `POST /api/webhooks/transactions` | Card transaction feed. New transactions trigger re-matching of unmatched documents | `x-signature-256: sha256=<hex>` |
-| `/review` | Review page: ranked candidates, confirm / reject | none (see limitations) |
+| `/review` | Review page, two tabs (Needs review, Unmatched): ranked candidates, confirm / reject. A candidate whose transaction already has a confirmed document is a **possible duplicate** and can only be rejected | none (see limitations) |
 
 Responses: `200` accepted/ignored/duplicate, `400` invalid payload (field paths only), `401` bad signature,
 `413` body too large, `503` + `Retry-After` when the provider should retry. Request-handling errors are mapped to 4xx/503. The one remaining `500` path is a misconfigured environment (e.g. production without its secrets), which deliberately refuses to serve.
@@ -152,26 +162,30 @@ where not exists (select 1 from DocumentMatch m where m.transactionId=t.id and m
 
 ## Seed data and fixtures
 
-`npm run db:seed` creates two clients, three drivers and ten transactions. The mock extractor recognises the 15 fixture
+`npm run db:seed` creates two clients, three drivers, 15 transactions (the assignment's own examples among them: `ALFANAR FUEL ST 04 RUH` for 287.50 and a restaurant charge of 63.25, plus three unrelated "noise" transactions) and three registered email senders. One of them, `billing@alfanar-fuel.com.sa`, is a demo mapping to Al Noor so that the assignment's sample email payload is accepted. The mock extractor recognises the 15 fixture
 files in [`fixtures/`](fixtures/README.md) by SHA-256 (`npx tsx scripts/print-fixtures.ts` lists them). `fixtures/` is the
 single source of truth: `documents/<name>.fixture` is the "file" that arrives, `extractions/<name>.json` is the
 assignment's `ExtractedDocument` the mock returns for it, `media-map.json` maps WhatsApp media ids (`media_4471`, ...) to
 files, and `webhooks/` holds sample request bodies. The loader needs the server to run from the project root. Each fixture
 exercises a matcher edge case: exact match, two identical transactions (ambiguous), the same pair disambiguated by card
 last4, tip, rounding, pre-VAT total, no matching transaction, garbage extraction, low OCR confidence, an Arabic merchant,
-an already-confirmed transaction, a forced extractor failure, the assignment's sample tax invoice, and a restaurant tip.
+an already-confirmed transaction (a possible duplicate, so it goes to review), a forced extractor failure, the assignment's sample tax
+invoice (auto-matched, merchant `Alfanar Fuel Station` against `ALFANAR FUEL ST 04 RUH`), and the assignment's restaurant tip (57.50 against 63.25, review).
+The same receipt sent by a second channel after it was matched (for example WhatsApp, then email) also lands in review as a possible duplicate.
 
 ## Layout
 
 ```
 app/api/webhooks/*       thin route files (wiring only)
 app/review/              review page and client components
+lib/prisma.ts            the PrismaClient singleton (default export; `db` is the same object). lib/prisma-client.ts builds a client for scripts and tests
+lib/logger.ts            structured logger (`log`, `consoleLogger`)
 lib/webhooks/            HMAC, Zod schemas, body reader, handlers (testable without Next)
 lib/services/            ingestion, match pipeline, matcher (pure), re-match, blob store, media store (WhatsApp Cloud API | fixtures)
 lib/matching/            normalization, similarity, per-signal scoring (pure)
 lib/extraction/          DocumentExtractor interface, MockExtractor, fixtures loader, ClaudeExtractor
 fixtures/                the mock's documents, extractions, media map and sample webhook bodies
-lib/actions/             review confirm/reject (core logic + next-safe-action wrappers)
+lib/actions/             review confirm/reject (core logic, safe-action-client.ts = `actionClient`, and the next-safe-action wrappers)
 prisma/                  schema, migration (with the partial unique index), seed
 __tests__/               matcher, helpers, ingestion, handlers, actions, db constraints
 ```

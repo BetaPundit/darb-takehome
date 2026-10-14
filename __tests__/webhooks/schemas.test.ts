@@ -57,6 +57,36 @@ describe('emailWebhookSchema', () => {
     expect(emailWebhookSchema.safeParse({ ...valid, ...patch }).success).toBe(false);
   });
 
+  describe('`to` is the assignment\'s plain string OR a non-empty list of addresses', () => {
+    it('a string address is accepted and normalised to a one-element list', () => {
+      expect(emailWebhookSchema.parse({ ...valid, to: 'receipts@darb.example.com' }).to).toEqual(['receipts@darb.example.com']);
+    });
+    it('a list is unchanged', () => {
+      expect(emailWebhookSchema.parse({ ...valid, to: ['a@darb.sa', 'b@darb.sa'] }).to).toEqual(['a@darb.sa', 'b@darb.sa']);
+    });
+    it.each([
+      ['empty string', ''],
+      ['not an address', 'SECRET-VALUE-nope'],
+      ['empty list', []],
+      ['list with a bad entry', ['a@darb.sa', 'SECRET-VALUE-nope']],
+      ['a number', 5],
+      ['null', null],
+      ['an object', { email: 'a@darb.sa' }],
+    ])('rejects %s with a message that does not echo the value', (_n, to) => {
+      const r = emailWebhookSchema.safeParse({ ...valid, to });
+      expect(r.success).toBe(false);
+      if (!r.success) {
+        expect(r.error.issues.every((i) => i.path[0] === 'to')).toBe(true);
+        expect(JSON.stringify(r.error.issues.map((i) => i.message))).not.toContain('SECRET-VALUE');
+      }
+    });
+    it('a missing `to` is still rejected', () => {
+      const rest: Record<string, unknown> = { ...valid };
+      delete rest.to;
+      expect(emailWebhookSchema.safeParse(rest).success).toBe(false);
+    });
+  });
+
   it('accepts an ISO receivedAt with offset', () => {
     expect(emailWebhookSchema.safeParse({ ...valid, receivedAt: '2026-10-13T10:00:00+03:00' }).success).toBe(true);
   });
@@ -210,9 +240,62 @@ describe('whatsappWebhookSchema + extractMediaMessages', () => {
     expect(extractMediaMessages(whatsappWebhookSchema.parse(p))).toHaveLength(2);
   });
 
-  it('rejects a wrong object, missing metadata and a malformed image message', () => {
+  describe('the envelope extras of the Meta Cloud API are optional (the assignment\'s sample has none of them)', () => {
+    const bare = (messages: unknown[]) => ({ entry: [{ changes: [{ value: { messages } }] }] });
+
+    it('the assignment sample shape parses: no object, entry.id, field, messaging_product or metadata', () => {
+      const parsed = whatsappWebhookSchema.parse(bare([image]));
+      expect(extractMediaMessages(parsed).map((m) => m.messageId)).toEqual(['wamid.IMG']);
+    });
+
+    it.each([
+      ['object', (e: ReturnType<typeof envelope>) => { delete (e as Partial<typeof e>).object; }],
+      ['entry[].id', (e: ReturnType<typeof envelope>) => { delete (e.entry[0] as Partial<(typeof e.entry)[0]>).id; }],
+      ['changes[].field', (e: ReturnType<typeof envelope>) => { delete (e.entry[0]!.changes[0] as Partial<(typeof e.entry)[0]['changes'][0]>).field; }],
+      ['value.messaging_product', (e: ReturnType<typeof envelope>) => { delete (e.entry[0]!.changes[0]!.value as Partial<(typeof e.entry)[0]['changes'][0]['value']>).messaging_product; }],
+      ['value.metadata', (e: ReturnType<typeof envelope>) => { delete (e.entry[0]!.changes[0]!.value as Partial<(typeof e.entry)[0]['changes'][0]['value']>).metadata; }],
+    ])('each field can be absent on its own: %s', (_n, remove) => {
+      const e = envelope([image]);
+      remove(e);
+      expect(whatsappWebhookSchema.safeParse(e).success).toBe(true);
+    });
+
+    it('unknown extra keys anywhere are ignored, and sha256 / caption on the media are accepted', () => {
+      const e = envelope([{ ...image, context: { id: 'x' }, extra: 1 }], { contacts: [{ wa_id: '1' }], surprise: true });
+      expect(whatsappWebhookSchema.safeParse({ ...e, another: 1 }).success).toBe(true);
+    });
+
+    it('a status-only delivery without the extras is still valid and carries no media', () => {
+      const parsed = whatsappWebhookSchema.parse({ entry: [{ changes: [{ value: { statuses: [{ id: 'x', status: 'sent' }] } }] }] });
+      expect(extractMediaMessages(parsed)).toEqual([]);
+    });
+
+    it('what is present is still checked: a wrong or non-string object, a mistyped extra, metadata without phone_number_id', () => {
+      expect(whatsappWebhookSchema.safeParse({ ...bare([image]), object: 'page' }).success).toBe(false);
+      expect(whatsappWebhookSchema.safeParse({ ...bare([image]), object: null }).success).toBe(false);
+      expect(whatsappWebhookSchema.safeParse({ ...bare([image]), object: 1 }).success).toBe(false);
+      expect(whatsappWebhookSchema.safeParse({ entry: [{ id: 5, changes: [{ value: { messages: [image] } }] }] }).success).toBe(false);
+      expect(whatsappWebhookSchema.safeParse({ entry: [{ changes: [{ field: 5, value: { messages: [image] } }] }] }).success).toBe(false);
+      expect(whatsappWebhookSchema.safeParse({ entry: [{ changes: [{ value: { messaging_product: 5, messages: [image] } }] }] }).success).toBe(false);
+      expect(whatsappWebhookSchema.safeParse({ entry: [{ changes: [{ value: { metadata: {}, messages: [image] } }] }] }).success).toBe(false);
+    });
+
+    it('the structure itself is still required: no entry, no changes, no value', () => {
+      expect(whatsappWebhookSchema.safeParse({}).success).toBe(false);
+      expect(whatsappWebhookSchema.safeParse({ entry: [{}] }).success).toBe(false);
+      expect(whatsappWebhookSchema.safeParse({ entry: [{ changes: [{}] }] }).success).toBe(false);
+    });
+
+    it('message shapes stay strict without the extras: a malformed image or document message is a 400, not silently dropped', () => {
+      expect(whatsappWebhookSchema.safeParse(bare([{ id: 'w', from: '1', type: 'image' }])).success).toBe(false);
+      expect(whatsappWebhookSchema.safeParse(bare([{ id: 'w', from: '1', type: 'image', image: { mime_type: 'image/jpeg' } }])).success).toBe(false);
+      expect(whatsappWebhookSchema.safeParse(bare([{ ...doc, document: { id: '1' } }])).success).toBe(false);
+      expect(whatsappWebhookSchema.safeParse(bare([{ type: 'text' }])).success).toBe(false);
+    });
+  });
+
+  it('rejects a wrong object and a malformed image message', () => {
     expect(whatsappWebhookSchema.safeParse({ ...envelope([]), object: 'page' }).success).toBe(false);
-    expect(whatsappWebhookSchema.safeParse({ object: 'whatsapp_business_account', entry: [{ id: '1', changes: [{ field: 'messages', value: { messaging_product: 'whatsapp' } }] }] }).success).toBe(false);
     // type=image without an image object must not slip through the catch-all
     expect(whatsappWebhookSchema.safeParse(envelope([{ id: 'w', from: '1', type: 'image' }])).success).toBe(false);
     expect(whatsappWebhookSchema.safeParse(envelope([{ ...doc, document: { id: '1' } }])).success).toBe(false);

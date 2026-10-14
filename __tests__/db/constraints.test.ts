@@ -80,6 +80,14 @@ describe('one_confirmed_per_txn partial unique index', () => {
     expect(await db.documentMatch.count({ where: { transactionId: 'txn_exact' } })).toBe(4);
   });
 
+  it('allows CANDIDATE and REJECTED rows on a transaction that is already confirmed (how possible-duplicate candidates are stored)', async () => {
+    const [a, b] = await Promise.all([db.document.create({ data: newDocument() }), db.document.create({ data: newDocument() })]);
+    await db.documentMatch.create({ data: matchFor(a.id, 'txn_confirmed', 'CANDIDATE') });
+    await db.documentMatch.create({ data: matchFor(b.id, 'txn_confirmed', 'REJECTED') });
+    expect(await db.documentMatch.count({ where: { transactionId: 'txn_confirmed' } })).toBe(3);
+    expect(await db.documentMatch.count({ where: { transactionId: 'txn_confirmed', status: { in: ['AUTO_CONFIRMED', 'CONFIRMED'] } } })).toBe(1);
+  });
+
   it('allows a new confirmation once the previous confirmed match was rejected', async () => {
     const doc = await db.document.create({ data: newDocument() });
     await db.documentMatch.update({ where: { id: 'match_seed_confirmed' }, data: { status: 'REJECTED' } });

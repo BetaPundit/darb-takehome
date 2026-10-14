@@ -52,6 +52,7 @@ describe('merchantSimilarity: real merchant strings', () => {
     ['Jarir Bookstore', 'JARIR BOOKSTORE RIYADH BRANCH'],
     ['مطعم البيك - فرع الرياض', 'مطعم البيك'],
     ['SASCO Station 118', 'SASCO STATION 118'],
+    ['Alfanar Fuel Station', 'ALFANAR FUEL ST 04 RUH'], // the assignment's own acquirer-name example
   ])('%s ~ %s = 1', (a, b) => {
     expect(merchantSimilarity(a, b)).toBe(1);
   });
@@ -62,6 +63,12 @@ describe('merchantSimilarity: real merchant strings', () => {
 
   it('scores unrelated merchants low: "Al Baik" vs "Al Rajhi Bank"', () => {
     expect(merchantSimilarity('Al Baik', 'Al Rajhi Bank')).toBeLessThan(0.6);
+  });
+
+  it('the abbreviation rules do not make unrelated names look alike', () => {
+    expect(merchantSimilarity('Al Baik', 'Al Rajhi Bank')).toBeLessThan(0.6);
+    expect(merchantSimilarity('Alfanar Fuel Station', 'ARAMCO ST 0412 RUH')).toBeLessThan(0.8);
+    expect(merchantSimilarity('Alfanar Fuel Station', 'Al Rajhi Bank')).toBeLessThan(0.6);
   });
 
   it('does not treat near-miss names as identical: "Starbucks" vs "Starbuzz Cafe"', () => {

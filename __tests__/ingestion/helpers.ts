@@ -10,6 +10,7 @@ export const DRIVER_1 = { kind: 'WHATSAPP', phone: '+966501111111' } as const sa
 export const DRIVER_2 = { kind: 'WHATSAPP', phone: '+966502222222' } as const satisfies SenderScope;
 export const DESERT_DRIVER = { kind: 'WHATSAPP', phone: '+966503333333' } as const satisfies SenderScope;
 export const ALNOOR_EMAIL = { kind: 'EMAIL', clientId: 'client_alnoor', email: 'ap@alnoor.example' } as const satisfies SenderScope;
+export const ALFANAR_EMAIL = { kind: 'EMAIL', clientId: 'client_alnoor', email: 'billing@alfanar-fuel.com.sa' } as const satisfies SenderScope;
 export const DESERT_EMAIL = { kind: 'EMAIL', clientId: 'client_desert', email: 'accounts@desertfleet.example' } as const satisfies SenderScope;
 
 export function makeService(db: PrismaClient, overrides: { extractor?: DocumentExtractor; extractionTimeoutMs?: number; leaseMs?: number; now?: () => Date } = {}) {

@@ -25,7 +25,10 @@ export interface MatcherCandidate {
   currency: string;
   occurredAt: Date;
   cardLast4: string | null;
-  /** true if a confirmed match already exists for this transaction */
+  /**
+   * true if a confirmed match already exists for this transaction. Such a candidate is still scored and offered
+   * (flag ALREADY_CONFIRMED) but can never be auto-matched: a second document for it is a possible duplicate.
+   */
   alreadyConfirmed: boolean;
 }
 
@@ -58,7 +61,8 @@ export type MatchReason =
   | 'CLEAR_WINNER'
   | 'AMBIGUOUS'
   | 'BELOW_AUTO_THRESHOLD'
-  | 'LOW_EXTRACTION_CONFIDENCE';
+  | 'LOW_EXTRACTION_CONFIDENCE'
+  | 'POSSIBLE_DUPLICATE';
 
 export interface MatchResult {
   outcome: MatchOutcome;
@@ -69,6 +73,8 @@ export interface MatchResult {
 
 interface Ranked {
   scored: ScoredCandidate;
+  /** the transaction already has a confirmed document: sorts after an unconfirmed candidate with the same score */
+  confirmed: boolean;
   /** |calendar-day difference|, used only as a ranking tiebreak. Infinity when unknown. */
   absDayDiff: number;
 }
@@ -97,15 +103,17 @@ function score(c: MatcherCandidate, doc: ExtractedDocument & { totalAmount: numb
       transactionId: c.id,
       score: total,
       signals: { amount: amount.value, merchant, date: date.value, card: card.value },
-      flags: [...amount.flags, ...date.flags, ...card.flags],
+      flags: [...amount.flags, ...date.flags, ...card.flags, ...(c.alreadyConfirmed ? (['ALREADY_CONFIRMED'] as const) : [])],
     },
+    confirmed: c.alreadyConfirmed,
     absDayDiff: date.dayDiff === null || !Number.isFinite(date.dayDiff) ? Infinity : Math.abs(date.dayDiff),
   };
 }
 
-/** score desc, then closer calendar day, then id asc: a total order, so input order never matters. */
+/** score desc, then unconfirmed before confirmed, then closer calendar day, then id asc: a total order, so input order never matters. */
 function compareRanked(a: Ranked, b: Ranked): number {
   if (a.scored.score !== b.scored.score) return b.scored.score - a.scored.score;
+  if (a.confirmed !== b.confirmed) return a.confirmed ? 1 : -1;
   if (a.absDayDiff !== b.absDayDiff) return a.absDayDiff < b.absDayDiff ? -1 : 1;
   if (a.scored.transactionId === b.scored.transactionId) return 0;
   return a.scored.transactionId < b.scored.transactionId ? -1 : 1;
@@ -121,8 +129,9 @@ export function matchDocument(input: MatchInput): MatchResult {
   const doc = { ...document, totalAmount: document.totalAmount };
   const currency = document.currency.toUpperCase();
 
-  // 2. Hard filters.
-  const eligible = candidates.filter((c) => !c.alreadyConfirmed && c.currency.toUpperCase() === currency && inScope(c, sender));
+  // 2. Hard filters. Already-confirmed transactions are NOT dropped: they are scored and flagged, because a second
+  // document for one is a possible duplicate receipt and a human should see it. Scope and currency still filter them.
+  const eligible = candidates.filter((c) => c.currency.toUpperCase() === currency && inScope(c, sender));
   if (eligible.length === 0) return unmatched('NO_CANDIDATES_IN_SCOPE');
 
   // 3-5. Score, rank, keep plausible.
@@ -141,10 +150,20 @@ export function matchDocument(input: MatchInput): MatchResult {
   const ambiguous = runnerUp !== undefined && round4(top.score - runnerUp.score) < config.minMargin;
   // A missing date removes a whole corroborating signal, so a card match must not be able to make up for it.
   const dateMissing = top.flags.includes('DATE_MISSING');
+  // The best candidate already has a confirmed document: attaching a second one automatically is never safe.
+  const possibleDuplicate = top.flags.includes('ALREADY_CONFIRMED');
 
-  if (top.score >= config.autoThreshold && !ambiguous && !lowConfidence && !dateMissing) {
+  if (top.score >= config.autoThreshold && !ambiguous && !lowConfidence && !dateMissing && !possibleDuplicate) {
     return { outcome: 'AUTO_MATCHED', reason: 'CLEAR_WINNER', candidates: ranked };
   }
-  const reason: MatchReason = lowConfidence ? 'LOW_EXTRACTION_CONFIDENCE' : ambiguous ? 'AMBIGUOUS' : 'BELOW_AUTO_THRESHOLD';
+  // First applicable reason. An unreadable document is reported first (the duplicate claim rests on its fields; the
+  // per-candidate flag still shows). A confirmed top beats AMBIGUOUS / BELOW_AUTO_THRESHOLD: it is the more specific cause.
+  const reason: MatchReason = lowConfidence
+    ? 'LOW_EXTRACTION_CONFIDENCE'
+    : possibleDuplicate
+      ? 'POSSIBLE_DUPLICATE'
+      : ambiguous
+        ? 'AMBIGUOUS'
+        : 'BELOW_AUTO_THRESHOLD';
   return { outcome: 'NEEDS_REVIEW', reason, candidates: ranked };
 }

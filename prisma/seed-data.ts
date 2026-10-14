@@ -12,6 +12,10 @@ export const clients = [
 export const senders = [
   { id: 'sender_alnoor', clientId: 'client_alnoor', email: 'ap@alnoor.example' },
   { id: 'sender_desert', clientId: 'client_desert', email: 'accounts@desertfleet.example' },
+  // Demo mapping so the assignment's sample email payload (from billing@alfanar-fuel.com.sa) is accepted:
+  // that supplier address is treated as a mailbox of Al Noor. A real deployment registers a client's own
+  // mailboxes, not a supplier's.
+  { id: 'sender_alfanar', clientId: 'client_alnoor', email: 'billing@alfanar-fuel.com.sa' },
 ];
 
 const ALNOOR_DRIVER_1 = '+966501111111';
@@ -40,6 +44,14 @@ const transactionRows: SeedTransaction[] = [
   { id: 'txn_confirmed', clientId: 'client_alnoor', driverPhone: ALNOOR_DRIVER_1, merchantName: 'SASCO STATION 118', amountMinor: 8000, occurredAt: new Date('2026-10-01T07:30:00+03:00'), cardLast4: null },
   { id: 'txn_email', clientId: 'client_desert', driverPhone: DESERT_DRIVER, merchantName: 'ADNOC DISTRIBUTION', amountMinor: 25000, occurredAt: new Date('2026-10-04T15:20:00+03:00'), cardLast4: null },
   { id: 'txn_arabic', clientId: 'client_desert', driverPhone: DESERT_DRIVER, merchantName: 'مطعم البيك', amountMinor: 3500, occurredAt: new Date('2026-10-05T20:10:00+03:00'), cardLast4: null },
+  // The assignment's own examples: acquirer name "ALFANAR FUEL ST 04 RUH" vs the invoice's "Alfanar Fuel Station",
+  // and a restaurant receipt of 57.50 against a card charge of 63.25 (tip).
+  { id: 'txn_alfanar', clientId: 'client_alnoor', driverPhone: ALNOOR_DRIVER_1, merchantName: 'ALFANAR FUEL ST 04 RUH', amountMinor: 28750, occurredAt: new Date('2026-10-06T11:05:00+03:00'), cardLast4: null },
+  { id: 'txn_restaurant', clientId: 'client_alnoor', driverPhone: ALNOOR_DRIVER_2, merchantName: 'AL ROMANSIAH RESTAURANT', amountMinor: 6325, occurredAt: new Date('2026-10-07T14:20:00+03:00'), cardLast4: null },
+  // Background noise: transactions no fixture is meant to match, so the matcher is not only ever shown the right answer.
+  { id: 'txn_noise_1', clientId: 'client_desert', driverPhone: DESERT_DRIVER, merchantName: 'EXTRA STORES 33', amountMinor: 15900, occurredAt: new Date('2026-10-05T09:00:00+03:00'), cardLast4: null },
+  { id: 'txn_noise_2', clientId: 'client_alnoor', driverPhone: ALNOOR_DRIVER_2, merchantName: 'UBER TRIP', amountMinor: 4100, occurredAt: new Date('2026-10-06T19:30:00+03:00'), cardLast4: null },
+  { id: 'txn_noise_3', clientId: 'client_alnoor', driverPhone: ALNOOR_DRIVER_1, merchantName: 'PANDA HYPER 07', amountMinor: 31250, occurredAt: new Date('2026-10-02T16:10:00+03:00'), cardLast4: null },
 ];
 
 export const transactions = transactionRows.map((t) => ({ ...t, currency: 'SAR', externalRef: `ext_${t.id}` }));
