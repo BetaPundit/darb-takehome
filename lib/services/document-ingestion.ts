@@ -1,7 +1,7 @@
 import { sha256Hex } from '@/lib/extraction/hash';
 import { ExtractionError, extractedDocumentSchema, type DocumentExtractor } from '@/lib/extraction/types';
 import type { PrismaClient } from '@/lib/generated/prisma/client';
-import type { Logger } from '@/lib/logger';
+import { errorFields, type Logger } from '@/lib/logger';
 import type { BlobStore } from '@/lib/services/blob-store';
 import { ConcurrentModificationError, isUniqueViolation, matchAndPersist } from '@/lib/services/match-pipeline';
 
@@ -128,7 +128,9 @@ export function createIngestionService(deps: IngestDeps) {
   }
 
   /** Phase B. Never throws for document-level problems (they become FAILED); throws only if the DB itself is unusable. */
-  async function processDocument(documentId: string): Promise<ProcessResult> {
+  async function processDocument(documentId: string, opts: { log?: Logger } = {}): Promise<ProcessResult> {
+    // The caller can pass a request-scoped logger so these lines carry the same requestId as the webhook that accepted it.
+    const log = (opts.log ?? deps.log).child({ documentId });
     const started = Date.now();
     const t = now();
 
@@ -149,24 +151,25 @@ export function createIngestionService(deps: IngestDeps) {
     try {
       bytes = await blobs.get(doc.blobKey);
     } catch {
-      log.error('document.blob_missing', { documentId });
+      log.error('document.blob_missing');
       return fail(documentId, 'BLOB_MISSING');
     }
 
     let extracted;
+    const extractStart = Date.now();
     try {
       extracted = await withTimeout(extractor.extract({ bytes, mimeType: doc.mimeType }), extractionTimeoutMs);
     } catch (err) {
       // Only the code is stored/logged: error messages from providers can echo document content.
       const reason = err instanceof ExtractionError ? err.code : 'EXTRACTOR_ERROR';
-      log.warn('document.extraction_failed', { documentId, reason });
+      log.warn('document.extraction_failed', { reason, extractionMs: Date.now() - extractStart });
       return fail(documentId, reason);
     }
 
     // Never trust an extractor, including our own: validate at the boundary before it reaches the DB or the matcher.
     const parsed = extractedDocumentSchema.safeParse(extracted);
     if (!parsed.success) {
-      log.warn('document.extraction_invalid', { documentId });
+      log.warn('document.extraction_invalid');
       return fail(documentId, 'INVALID_OUTPUT');
     }
 
@@ -176,12 +179,15 @@ export function createIngestionService(deps: IngestDeps) {
     });
     if (moved.count !== 1) return { status: 'SKIPPED' };
 
+    const extractionMs = Date.now() - extractStart;
+    const matchStart = Date.now();
     try {
       const result = await matchAndPersist(db, documentId, 'EXTRACTED', t);
-      log.info('document.processed', { documentId, source: doc.source, outcome: result.outcome, reason: result.reason, durationMs: Date.now() - started });
+      log.info('document.processed', { source: doc.source, outcome: result.outcome, reason: result.reason, extractionMs, matchMs: Date.now() - matchStart, durationMs: Date.now() - started });
       return { status: 'DONE', outcome: result.outcome, reason: result.reason };
     } catch (err) {
       if (err instanceof ConcurrentModificationError) return { status: 'SKIPPED' };
+      log.error('document.match_failed', errorFields(err));
       throw err;
     }
   }

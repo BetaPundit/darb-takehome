@@ -50,7 +50,7 @@ it wipes and re-creates the demo data.
 ## Tests and checks
 
 ```bash
-npm test             # 578 tests, ~1 s. Matcher and helpers need no DB; ingestion/handler/action tests use a real SQLite file per test file
+npm test             # 600 tests, ~1 s. Matcher and helpers need no DB; ingestion/handler/action tests use a real SQLite file per test file
 npm run typecheck
 npm run lint
 npm run build
@@ -79,7 +79,27 @@ See [.env.example](.env.example). Everything is validated lazily by `lib/env.ts`
 | `EMAIL_WEBHOOK_SECRET`, `WHATSAPP_APP_SECRET`, `TRANSACTIONS_WEBHOOK_SECRET`, `WHATSAPP_VERIFY_TOKEN` | **Required when `NODE_ENV=production`** (fail closed: the app errors on first use rather than serving unauthenticated). Outside production a missing secret skips that check and logs a warning |
 | `WHATSAPP_ACCESS_TOKEN` | Used to download media from Meta. Without it, development uses a fixture-backed fetcher (media id `fixture:<name>`). **In production a missing token makes WhatsApp media fetches fail with 503** |
 | `EXTRACTOR` | `mock` (default) or `claude`. `claude` requires `ANTHROPIC_API_KEY` and **fails on first use without it** instead of falling back to the mock |
+| `LOG_LEVEL`, `LOG_FORMAT` | `info`/`warn`/`error` (default `info`). `pretty` or `json`; default is pretty under `npm run dev` and JSON lines otherwise. `NO_COLOR=1` disables colours |
 | `BLOB_DIR`, `MAX_BODY_BYTES` | Where document bytes are stored (content-addressed) and the request size cap (default 10 MB) |
+
+## Logs
+
+Under `npm run dev` logs are one readable line per event; in production they are JSON lines (`warn`/`error` go to stderr):
+
+```
+20:58:33.882 INFO  webhook.accepted  requestId=e2a1… endpoint=whatsapp messages=1 documents=1 duplicates=0 skipped=0
+20:58:33.902 INFO  document.processed  requestId=e2a1… messageId=wamid.… documentId=cmv8… outcome=AUTO_MATCHED reason=CLEAR_WINNER extractionMs=1 matchMs=6 durationMs=20
+20:58:36.615 WARN  document.extraction_failed  requestId=0857… documentId=cmv8… reason=FIXTURE_FORCED_FAILURE
+```
+
+Every webhook request gets a `requestId` that is carried into its background processing, so `grep requestId=…` follows one
+message end to end. Events: `webhook.accepted` / `webhook.rejected` (reason: `bad_signature`, `invalid_payload`,
+`too_large`, …) / `webhook.ignored` / `webhook.retry_requested`, `document.processed` (with extraction and matching
+timings) / `document.extraction_failed`, `rematch.done`, `review.decided`. Logs carry ids, outcomes, counts, durations
+and short codes only. Never document text, phone numbers, sender addresses, merchant names, tokens, signatures or error
+messages; the logger redacts known-sensitive field names itself, and a test runs every fixture through every webhook and
+asserts none of that appears. The one deliberate exception is the provider's message id (an email `Message-ID` or a
+WhatsApp `wamid`), which is what lets you trace a message with the provider.
 
 ## Seed data and fixtures
 

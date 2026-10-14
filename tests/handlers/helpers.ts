@@ -1,7 +1,7 @@
 import { fixtureBytes, type FixtureName } from '@/lib/extraction/fixtures';
 import { MockExtractor } from '@/lib/extraction/mock-extractor';
 import type { PrismaClient } from '@/lib/generated/prisma/client';
-import { silentLogger } from '@/lib/logger';
+import { silentLogger, type Logger } from '@/lib/logger';
 import { parseEnv } from '@/lib/env';
 import { InMemoryBlobStore } from '@/lib/services/blob-store';
 import { createIngestionService } from '@/lib/services/document-ingestion';
@@ -13,7 +13,7 @@ import { signPayload } from '@/lib/webhooks/hmac';
 export const SECRETS = { email: 'email-secret', whatsapp: 'wa-secret', transactions: 'tx-secret', verify: 'verify-me' };
 
 /** Real handlers, real DB, real ingestion; only the network (media) and "after()" scheduling are test-controlled. */
-export function makeDeps(db: PrismaClient, overrides: { media?: MediaFetcher; env?: Record<string, string> } = {}) {
+export function makeDeps(db: PrismaClient, overrides: { media?: MediaFetcher; env?: Record<string, string>; log?: Logger } = {}) {
   const pending: Promise<void>[] = [];
   const env = parseEnv({
     NODE_ENV: 'test',
@@ -23,13 +23,14 @@ export function makeDeps(db: PrismaClient, overrides: { media?: MediaFetcher; en
     WHATSAPP_VERIFY_TOKEN: SECRETS.verify,
     ...overrides.env,
   });
-  const ingestion = createIngestionService({ db, extractor: new MockExtractor(), blobs: new InMemoryBlobStore(), log: silentLogger });
+  const log = overrides.log ?? silentLogger;
+  const ingestion = createIngestionService({ db, extractor: new MockExtractor(), blobs: new InMemoryBlobStore(), log });
   const deps: WebhookDeps = {
     db,
     env,
     ingestion,
     media: overrides.media ?? new FixtureMediaFetcher(),
-    log: silentLogger,
+    log,
     schedule: (task) => void pending.push(task()), // run immediately, but let the test await completion
     now: () => new Date('2026-10-06T08:00:00Z'),
   };

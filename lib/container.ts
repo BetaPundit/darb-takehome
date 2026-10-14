@@ -2,7 +2,7 @@ import { after } from 'next/server';
 import { db } from '@/lib/db';
 import { getEnv } from '@/lib/env';
 import { createExtractor } from '@/lib/extraction';
-import { consoleLogger } from '@/lib/logger';
+import { consoleLogger, errorFields } from '@/lib/logger';
 import { LocalFsBlobStore } from '@/lib/services/blob-store';
 import { createIngestionService } from '@/lib/services/document-ingestion';
 import { FixtureMediaFetcher, UnconfiguredMediaFetcher } from '@/lib/services/fixture-media-fetcher';
@@ -31,7 +31,7 @@ export function getWebhookDeps(): WebhookDeps {
   });
 
   const schedule: WebhookDeps['schedule'] = (task) => {
-    const safe = () => task().catch((err: unknown) => log.error('background.failed', { error: err instanceof Error ? err.name : 'unknown' }));
+    const safe = () => task().catch((err: unknown) => log.error('background.failed', errorFields(err)));
     try {
       after(safe); // runs after the response is flushed, and keeps the serverless invocation alive
     } catch {

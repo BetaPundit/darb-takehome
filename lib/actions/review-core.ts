@@ -1,5 +1,5 @@
 import { Prisma, type PrismaClient } from '@/lib/generated/prisma/client';
-import { consoleLogger, type Logger } from '@/lib/logger';
+import { consoleLogger, errorFields, type Logger } from '@/lib/logger';
 import { isUniqueViolation, TXN_TAKEN, unmatchIfNoCandidates, withdrawCompetingOffers } from '@/lib/services/match-pipeline';
 
 /**
@@ -30,7 +30,7 @@ export type ClientError = { code: ReviewErrorCode | 'INTERNAL'; message: string 
 /** What the client may see. Typed errors pass through; everything else is logged here and replaced by a generic message. */
 export function toClientError(err: Error, log: Logger = consoleLogger): ClientError {
   if (err instanceof ReviewError) return { code: err.code, message: err.message };
-  log.error('review.action_failed', { error: err.name, message: err.message });
+  log.error('review.action_failed', errorFields(err)); // never err.message: Prisma errors echo the query arguments
   return { code: 'INTERNAL', message: 'Something went wrong. Please try again.' };
 }
 

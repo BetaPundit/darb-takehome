@@ -264,7 +264,7 @@ describe('rejectMatchCore', () => {
 
 describe('toClientError (handleServerError)', () => {
   const calls: unknown[][] = [];
-  const log: Logger = { info() {}, warn() {}, error: (...a) => void calls.push(a) };
+  const log: Logger = { info() {}, warn() {}, error: (...a) => void calls.push(a), child: () => log };
   beforeEach(() => void (calls.length = 0));
 
   it('maps ReviewError to { code, message } and does not log it as a failure', () => {
@@ -273,11 +273,14 @@ describe('toClientError (handleServerError)', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('turns anything else into a generic message and logs the real error server-side only', () => {
-    const out = toClientError(new Error('SQLITE_ERROR: no such table secret_table at /srv/app/dev.db'), log);
+  it('turns anything else into a generic message; the log gets the error class and code, NEVER the message', () => {
+    const err = Object.assign(new Error('SQLITE_ERROR: no such table secret_table at /srv/app/dev.db, contentHash "abc"'), { code: 'P2021' });
+    const out = toClientError(err, log);
     expect(out).toEqual({ code: 'INTERNAL', message: 'Something went wrong. Please try again.' });
     expect(JSON.stringify(out)).not.toMatch(/sqlite|secret|dev\.db/i);
     expect(calls).toHaveLength(1);
-    expect(JSON.stringify(calls[0])).toMatch(/SQLITE_ERROR/);
+    // Prisma/driver messages can echo the query arguments (document data), so they must not reach the logs either.
+    expect(calls[0]).toEqual(['review.action_failed', { error: 'Error', code: 'P2021' }]);
+    expect(JSON.stringify(calls[0])).not.toMatch(/SQLITE_ERROR|secret_table|contentHash/);
   });
 });

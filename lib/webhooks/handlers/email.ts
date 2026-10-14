@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { errorFields } from '@/lib/logger';
 import type { WebhookDeps } from '@/lib/webhooks/deps';
 import { verifySignature } from '@/lib/webhooks/hmac';
 import { accepted, ignored, readRawBody, tooLarge, unauthorized, unavailable } from '@/lib/webhooks/http';
@@ -11,18 +13,29 @@ import { decodeAttachment, emailWebhookSchema } from '@/lib/webhooks/schemas';
  * Anything slow (OCR, matching) happens after the response, via deps.schedule.
  */
 export async function handleEmailWebhook(req: Request, deps: WebhookDeps): Promise<Response> {
-  const { env, db, ingestion, log } = deps;
+  const { env, db, ingestion } = deps;
+  // One id per request, carried into the background processing, so a message can be followed end to end.
+  const log = deps.log.child({ requestId: randomUUID(), endpoint: 'email' });
 
   const body = await readRawBody(req, env.MAX_BODY_BYTES);
-  if (!body.ok) return tooLarge();
+  if (!body.ok) {
+    log.warn('webhook.rejected', { reason: 'too_large' });
+    return tooLarge();
+  }
 
   // HMAC is over the exact bytes received, before anything is parsed.
   const sig = verifySignature({ rawBody: body.raw, header: req.headers.get('x-signature-256'), secret: env.EMAIL_WEBHOOK_SECRET });
-  if (sig === 'invalid') return unauthorized();
+  if (sig === 'invalid') {
+    log.warn('webhook.rejected', { reason: 'bad_signature' });
+    return unauthorized();
+  }
   if (sig === 'skipped') log.warn('webhook.signature_check_skipped', { endpoint: 'email' });
 
   const parsed = parseJsonBody(body.raw, emailWebhookSchema);
-  if (!parsed.ok) return parsed.response;
+  if (!parsed.ok) {
+    log.warn('webhook.rejected', { reason: 'invalid_payload' });
+    return parsed.response;
+  }
   const email = parsed.value;
 
   try {
@@ -30,7 +43,7 @@ export async function handleEmailWebhook(req: Request, deps: WebhookDeps): Promi
     // (nothing to scope them to, and storing them would let anyone fill the disk).
     const sender = await db.clientSender.findUnique({ where: { email: email.from }, select: { clientId: true } });
     if (!sender) {
-      log.info('webhook.email_unknown_sender', {});
+      log.info('webhook.ignored', { reason: 'unknown_sender', messageId: email.messageId });
       return ignored('UNKNOWN_SENDER');
     }
 
@@ -38,6 +51,7 @@ export async function handleEmailWebhook(req: Request, deps: WebhookDeps): Promi
     for (const [i, att] of email.attachments.entries()) {
       const decoded = decodeAttachment(att, env.MAX_BODY_BYTES);
       if (!decoded.ok) {
+        log.warn('webhook.rejected', { reason: 'invalid_attachment', detail: decoded.reason, index: i });
         if (decoded.reason === 'TOO_LARGE') return tooLarge();
         return Response.json({ status: 'invalid', issues: [{ path: `attachments.${i}.contentBase64`, message: decoded.reason }] }, { status: 400 });
       }
@@ -50,12 +64,14 @@ export async function handleEmailWebhook(req: Request, deps: WebhookDeps): Promi
       scope: { kind: 'EMAIL', clientId: sender.clientId, email: email.from },
       attachments,
     });
-    for (const r of results.filter((x) => !x.duplicate)) deps.schedule(() => ingestion.processDocument(r.documentId).then(() => undefined));
+    const fresh = results.filter((x) => !x.duplicate);
+    log.info('webhook.accepted', { messageId: email.messageId, documents: fresh.length, duplicates: results.length - fresh.length });
+    for (const r of fresh) deps.schedule(() => ingestion.processDocument(r.documentId, { log }).then(() => undefined));
 
     return accepted({ documents: results });
   } catch (err) {
     // Infrastructure failure BEFORE anything was durably accepted: tell the sender to retry. Idempotency makes that safe.
-    log.error('webhook.email_unavailable', { error: err instanceof Error ? err.name : 'unknown' });
+    log.error('webhook.unavailable', errorFields(err));
     return unavailable(30);
   }
 }
