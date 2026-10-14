@@ -1,0 +1,12 @@
+{
+  "documentType": "TAX_INVOICE",
+  "merchantName": "ADNOC Distribution LLC",
+  "vatNumber": "300000000000003",
+  "totalAmount": 25000,
+  "currency": "SAR",
+  "documentDate": "2026-10-04",
+  "cardLast4": null,
+  "invoiceNumber": "INV-88231",
+  "rawText": "Tax Invoice\nADNOC Distribution LLC\nVAT No: 300000000000003\nInvoice: INV-88231\nFuel\nTotal: 250.00 SAR\nDate: 2026-10-04",
+  "extractionConfidence": 0.97
+}

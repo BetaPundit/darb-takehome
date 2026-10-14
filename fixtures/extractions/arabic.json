@@ -1,0 +1,12 @@
+{
+  "documentType": "RECEIPT",
+  "merchantName": "مطعم البيك - فرع الرياض",
+  "vatNumber": null,
+  "totalAmount": 3500,
+  "currency": "SAR",
+  "documentDate": "2026-10-05",
+  "cardLast4": null,
+  "invoiceNumber": null,
+  "rawText": "مطعم البيك - فرع الرياض\nوجبة\nالإجمالي: 35.00 ر.س\nالتاريخ: 2026-10-05",
+  "extractionConfidence": 0.9
+}

@@ -1,0 +1,25 @@
+{
+  "entry": [
+    {
+      "changes": [
+        {
+          "value": {
+            "messages": [
+              {
+                "id": "wamid.HBgMOTY2NT.exact",
+                "from": "966501111111",
+                "timestamp": "1718356881",
+                "type": "image",
+                "image": {
+                  "id": "media_4471",
+                  "mime_type": "image/jpeg",
+                  "sha256": "a3f1c9..."
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

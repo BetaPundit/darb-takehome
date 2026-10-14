@@ -24,7 +24,7 @@ npm run dev                  # http://localhost:3000  (redirects to /review)
 With the dev server running, in a second terminal:
 
 ```bash
-./scripts/send-fixtures.sh   # sends every fixture through the real webhooks, then prints the outcome of each
+./scripts/send-fixtures.sh   # sends the demo fixtures through the real webhooks, then prints the outcome of each
 ```
 
 Or use [webhooks.http](webhooks.http) (VS Code REST Client / JetBrains), or import
@@ -59,7 +59,7 @@ it wipes and re-creates the demo data.
 ## Tests and checks
 
 ```bash
-npm test             # 601 tests, ~1 s. Matcher and helpers need no DB; ingestion/handler/action tests use a real SQLite file per test file
+npm test             # 741 tests, ~1 s. Matcher and helpers need no DB; ingestion/handler/action tests use a real SQLite file per test file
 npm run typecheck
 npm run lint
 npm run build
@@ -86,7 +86,7 @@ See [.env.example](.env.example). Everything is validated lazily by `lib/env.ts`
 |---|---|
 | `DATABASE_URL` | SQLite file, relative to the project root |
 | `EMAIL_WEBHOOK_SECRET`, `WHATSAPP_APP_SECRET`, `TRANSACTIONS_WEBHOOK_SECRET`, `WHATSAPP_VERIFY_TOKEN` | **Required when `NODE_ENV=production`** (fail closed: the app errors on first use rather than serving unauthenticated). Outside production a missing secret skips that check and logs a warning |
-| `WHATSAPP_ACCESS_TOKEN` | Used to download media from Meta. Without it, development uses a fixture-backed fetcher (media id `fixture:<name>`). **In production a missing token makes WhatsApp media fetches fail with 503** |
+| `WHATSAPP_ACCESS_TOKEN` | Used to download media from Meta. Without it, development uses a fixture-backed `MediaStore`: a media id such as `media_4471` is looked up in `fixtures/media-map.json`. **In production a missing token makes WhatsApp media fetches fail with 503** |
 | `EXTRACTOR` | `mock` (default) or `claude`. `claude` requires `ANTHROPIC_API_KEY` and **fails on first use without it** instead of falling back to the mock |
 | `LOG_LEVEL`, `LOG_FORMAT` | `info`/`warn`/`error` (default `info`). `pretty` or `json`; default is pretty under `npm run dev` and JSON lines otherwise. `NO_COLOR=1` disables colours |
 | `BLOB_DIR`, `MAX_BODY_BYTES` | Where document bytes are stored (content-addressed) and the request size cap (default 10 MB) |
@@ -134,7 +134,7 @@ select substr(d.id,-6) as doc, d.source, d.status, ifnull(d.matchReason,'-') as 
 from Document d order by d.receivedAt desc limit 10;
 
 -- what the OCR extracted, and why a match scored the way it did
-select json_extract(extraction,'$.merchantName') as merchant, json_extract(extraction,'$.amountMinor')/100.0 as amount,
+select json_extract(extraction,'$.merchantName') as merchant, json_extract(extraction,'$.totalAmount')/100.0 as amount,
        json_extract(extraction,'$.documentDate') as date, extractionConfidence as conf from Document where extraction is not null;
 select transactionId, round(score,4) as score, json_extract(signals,'$.amount') as amt, json_extract(signals,'$.merchant') as mer,
        json_extract(signals,'$.date') as dat, json_extract(signals,'$.flags') as flags, status
@@ -152,11 +152,14 @@ where not exists (select 1 from DocumentMatch m where m.transactionId=t.id and m
 
 ## Seed data and fixtures
 
-`npm run db:seed` creates two clients, three drivers and ten transactions. The mock extractor recognises 13 fixture
-files by SHA-256 (`npx tsx scripts/print-fixtures.ts` lists them). Each fixture exercises a matcher edge case: exact
-match, two identical transactions (ambiguous), the same pair disambiguated by card last4, tip, rounding, pre-VAT total,
-no matching transaction, garbage extraction, low OCR confidence, an Arabic merchant, an already-confirmed
-transaction, and a forced extractor failure.
+`npm run db:seed` creates two clients, three drivers and ten transactions. The mock extractor recognises the 15 fixture
+files in [`fixtures/`](fixtures/README.md) by SHA-256 (`npx tsx scripts/print-fixtures.ts` lists them). `fixtures/` is the
+single source of truth: `documents/<name>.fixture` is the "file" that arrives, `extractions/<name>.json` is the
+assignment's `ExtractedDocument` the mock returns for it, `media-map.json` maps WhatsApp media ids (`media_4471`, ...) to
+files, and `webhooks/` holds sample request bodies. The loader needs the server to run from the project root. Each fixture
+exercises a matcher edge case: exact match, two identical transactions (ambiguous), the same pair disambiguated by card
+last4, tip, rounding, pre-VAT total, no matching transaction, garbage extraction, low OCR confidence, an Arabic merchant,
+an already-confirmed transaction, a forced extractor failure, the assignment's sample tax invoice, and a restaurant tip.
 
 ## Layout
 
@@ -164,9 +167,10 @@ transaction, and a forced extractor failure.
 app/api/webhooks/*       thin route files (wiring only)
 app/review/              review page and client components
 lib/webhooks/            HMAC, Zod schemas, body reader, handlers (testable without Next)
-lib/services/            ingestion, match pipeline, matcher (pure), re-match, blob store, media fetcher
+lib/services/            ingestion, match pipeline, matcher (pure), re-match, blob store, media store (WhatsApp Cloud API | fixtures)
 lib/matching/            normalization, similarity, per-signal scoring (pure)
-lib/extraction/          DocumentExtractor interface, MockExtractor, fixtures, ClaudeExtractor
+lib/extraction/          DocumentExtractor interface, MockExtractor, fixtures loader, ClaudeExtractor
+fixtures/                the mock's documents, extractions, media map and sample webhook bodies
 lib/actions/             review confirm/reject (core logic + next-safe-action wrappers)
 prisma/                  schema, migration (with the partial unique index), seed
 __tests__/               matcher, helpers, ingestion, handlers, actions, db constraints

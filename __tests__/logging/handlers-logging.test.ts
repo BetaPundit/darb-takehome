@@ -1,13 +1,13 @@
 import type { PrismaClient } from '@/lib/generated/prisma/client';
-import { FixtureMediaFetcher } from '@/lib/services/fixture-media-fetcher';
-import { MediaFetchError, type MediaFetcher } from '@/lib/services/media-fetcher';
+import { FixtureMediaStore } from '@/lib/services/fixture-media-store';
+import { MediaStoreError, type MediaStore } from '@/lib/services/media-store';
 import { handleEmailWebhook } from '@/lib/webhooks/handlers/email';
 import { handleTransactionsWebhook } from '@/lib/webhooks/handlers/transactions';
 import { handleWhatsAppWebhook } from '@/lib/webhooks/handlers/whatsapp';
 import { FIXTURES, type FixtureName } from '@/lib/extraction/fixtures';
 import { seedDatabase } from '@/prisma/seed-data';
 import { createTestDb } from '../helpers/test-db';
-import { emailPayload, makeDeps, SECRETS, signedRequest, waPayload } from '../handlers/helpers';
+import { emailPayload, makeDeps, mediaIdFor, SECRETS, signedRequest, waPayload } from '../handlers/helpers';
 import { createCapturingLogger } from './capture';
 
 const EMAIL = 'http://localhost/api/webhooks/email';
@@ -71,7 +71,7 @@ describe('webhook logging', () => {
 
   it('a WhatsApp media failure that asks Meta to retry is logged at error/warn with the status, not the token or URL', async () => {
     const log = createCapturingLogger();
-    const media: MediaFetcher = { download: () => Promise.reject(new MediaFetchError('HTTP_ERROR', false, 'token abc123 expired at https://secret.example/x', 401)) };
+    const media: MediaStore = { get: () => Promise.reject(new MediaStoreError('HTTP_ERROR', false, 'token abc123 expired at https://secret.example/x', 401)) };
     const { deps } = makeDeps(db, { log, media });
     const res = await handleWhatsAppWebhook(signedRequest(WA, waPayload([{ id: 'wamid.L1', from: '966501111111' }]), SECRETS.whatsapp, 'x-hub-signature-256'), deps);
     expect(res.status).toBe(503);
@@ -86,7 +86,7 @@ describe('webhook logging', () => {
 
     const names = Object.keys(FIXTURES) as FixtureName[];
     for (const [i, name] of names.entries()) {
-      await handleWhatsAppWebhook(signedRequest(WA, waPayload([{ id: `wamid.S${i}`, from: i % 2 ? '966502222222' : '966501111111', media: `fixture:${name}` }]), SECRETS.whatsapp, 'x-hub-signature-256'), deps);
+      await handleWhatsAppWebhook(signedRequest(WA, waPayload([{ id: `wamid.S${i}`, from: i % 2 ? '966502222222' : '966501111111', media: mediaIdFor(name) }]), SECRETS.whatsapp, 'x-hub-signature-256'), deps);
       await handleEmailWebhook(signedRequest(EMAIL, emailPayload(`<s${i}@mail.example>`, [name]), SECRETS.email), deps);
     }
     await handleEmailWebhook(signedRequest(EMAIL, emailPayload('<stranger@mail.example>', ['exact'], 'stranger@evil.example'), SECRETS.email), deps);
@@ -109,7 +109,7 @@ describe('webhook logging', () => {
     // and the rejections we expect are present
     expect(log.entries.filter((e) => e.event === 'webhook.rejected').map((e) => e.fields.reason)).toContain('bad_signature');
     expect(log.entries.some((e) => e.event === 'webhook.ignored' && e.fields.reason === 'unknown_sender')).toBe(true);
-    // a media fetcher that works, to make sure the run above was not vacuous
-    expect(await new FixtureMediaFetcher().download('fixture:exact')).toBeTruthy();
+    // a media store that works, to make sure the run above was not vacuous
+    expect(await new FixtureMediaStore().get(mediaIdFor('exact'))).toBeTruthy();
   });
 });

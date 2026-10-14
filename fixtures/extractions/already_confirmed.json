@@ -1,0 +1,12 @@
+{
+  "documentType": "RECEIPT",
+  "merchantName": "SASCO Station 118",
+  "vatNumber": null,
+  "totalAmount": 8000,
+  "currency": "SAR",
+  "documentDate": "2026-10-01T07:30:00+03:00",
+  "cardLast4": null,
+  "invoiceNumber": null,
+  "rawText": "SASCO Station 118\nFuel - 91\nTotal: 80.00 SAR\nDate: 2026-10-01 07:30",
+  "extractionConfidence": 0.95
+}

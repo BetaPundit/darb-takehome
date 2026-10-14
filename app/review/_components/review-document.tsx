@@ -28,13 +28,13 @@ function Extracted({ extraction }: { extraction: unknown }) {
   const e = parsed.data;
   const fields: [string, string][] = [
     ['Merchant', e.merchantName ?? 'unknown'],
-    ['Amount', e.amountMinor === null ? 'unknown' : formatMinor(e.amountMinor, e.currency ?? 'SAR')],
+    ['Amount', e.totalAmount === null ? 'unknown' : formatMinor(e.totalAmount, e.currency ?? 'SAR')],
     ['Date', e.documentDate ?? 'unknown'],
     ['Card last 4', e.cardLast4 ?? 'none'],
     ['Invoice no.', e.invoiceNumber ?? 'none'],
     ['VAT no.', e.vatNumber ?? 'none'],
     ['Type', e.documentType],
-    ['OCR confidence', pct(e.confidence)],
+    ['OCR confidence', pct(e.extractionConfidence)],
   ];
   return (
     <dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">

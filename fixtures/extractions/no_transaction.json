@@ -1,0 +1,12 @@
+{
+  "documentType": "TAX_INVOICE",
+  "merchantName": "Saudi Electricity Company",
+  "vatNumber": "300000000000003",
+  "totalAmount": 99999,
+  "currency": "SAR",
+  "documentDate": "2026-10-02",
+  "cardLast4": null,
+  "invoiceNumber": "SEC-5521",
+  "rawText": "Tax Invoice\nSaudi Electricity Company\nVAT No: 300000000000003\nInvoice: SEC-5521\nTotal due: 999.99 SAR\nDate: 2026-10-02",
+  "extractionConfidence": 0.96
+}

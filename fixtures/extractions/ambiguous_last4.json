@@ -1,0 +1,12 @@
+{
+  "documentType": "RECEIPT",
+  "merchantName": "Al Baik",
+  "vatNumber": null,
+  "totalAmount": 4500,
+  "currency": "SAR",
+  "documentDate": "2026-10-02",
+  "cardLast4": "4242",
+  "invoiceNumber": null,
+  "rawText": "Al Baik\nMeal combo x2\nTotal: 45.00 SAR\nCard: **** **** **** 4242\nDate: 2026-10-02",
+  "extractionConfidence": 0.93
+}

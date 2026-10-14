@@ -1,0 +1,12 @@
+{
+  "documentType": "TAX_INVOICE",
+  "merchantName": "Jarir Bookstore",
+  "vatNumber": "300112233400003",
+  "totalAmount": 10000,
+  "currency": "SAR",
+  "documentDate": "2026-10-04",
+  "cardLast4": null,
+  "invoiceNumber": "INV-4471",
+  "rawText": "Tax Invoice\nJarir Bookstore\nVAT No: 300112233400003\nInvoice: INV-4471\nAmount before VAT: 100.00 SAR\nVAT 15%: 15.00 SAR\nTotal: [illegible]\nDate: 2026-10-04",
+  "extractionConfidence": 0.94
+}

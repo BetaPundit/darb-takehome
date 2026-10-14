@@ -1,17 +1,24 @@
 #!/usr/bin/env bash
 # Sends every mock-extractor fixture through the real webhooks of a running dev server, then prints what happened.
+# WhatsApp media ids and email attachment bytes come from fixtures/ (media-map.json, documents/*.fixture).
 #   npm run db:seed && npm run dev      (terminal 1)
 #   ./scripts/send-fixtures.sh          (terminal 2)
 # Secrets default to the ones in .env.example-style dev values; if the server has none set, signatures are skipped.
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://localhost:3000}"
+FIXTURES_DIR="$(cd "$(dirname "$0")/../fixtures" && pwd)"
 EMAIL_SECRET="${EMAIL_WEBHOOK_SECRET:-}"
 WA_SECRET="${WHATSAPP_APP_SECRET:-}"
 TX_SECRET="${TRANSACTIONS_WEBHOOK_SECRET:-}"
 
 sign() { # sign <secret> <body>  -> "sha256=<hex>" (HMAC-SHA256 over the exact bytes sent)
   printf 'sha256=%s' "$(printf '%s' "$2" | openssl dgst -sha256 -hmac "$1" -hex | sed 's/^.* //')"
+}
+
+media_id() { # media_id <fixture> -> the WhatsApp media id fixtures/media-map.json gives documents/<fixture>.fixture
+  node -e 'const m = require(process.argv[1]); const id = Object.keys(m).find((k) => m[k] === `documents/${process.argv[2]}.fixture`);
+    if (!id) { console.error(`no media id for fixture ${process.argv[2]} in media-map.json`); process.exit(1); } console.log(id);' "$FIXTURES_DIR/media-map.json" "$1"
 }
 
 post() { # post <path> <header-name> <secret> <body>
@@ -24,7 +31,7 @@ send_email() { # send_email <message-id> <from> <fixture...>
   local id="$1" from="$2"; shift 2
   local atts="" sep=""
   for f in "$@"; do
-    atts+="$sep{\"filename\":\"$f.jpg\",\"contentType\":\"image/jpeg\",\"contentBase64\":\"$(printf 'DARB-FIXTURE:%s' "$f" | base64)\"}"
+    atts+="$sep{\"filename\":\"$f.jpg\",\"contentType\":\"image/jpeg\",\"contentBase64\":\"$(base64 < "$FIXTURES_DIR/documents/$f.fixture" | tr -d '\n')\"}"
     sep=","
   done
   local body="{\"messageId\":\"$id\",\"from\":\"$from\",\"to\":[\"receipts@darb.sa\"],\"subject\":\"invoice\",\"attachments\":[$atts]}"
@@ -32,7 +39,8 @@ send_email() { # send_email <message-id> <from> <fixture...>
 }
 
 send_whatsapp() { # send_whatsapp <wamid> <digits-phone> <fixture>
-  local body="{\"object\":\"whatsapp_business_account\",\"entry\":[{\"id\":\"W\",\"changes\":[{\"field\":\"messages\",\"value\":{\"messaging_product\":\"whatsapp\",\"metadata\":{\"phone_number_id\":\"1\"},\"messages\":[{\"id\":\"$1\",\"from\":\"$2\",\"timestamp\":\"1760000000\",\"type\":\"image\",\"image\":{\"id\":\"fixture:$3\",\"mime_type\":\"image/jpeg\"}}]}}]}]}"
+  local media; media="$(media_id "$3")"
+  local body="{\"object\":\"whatsapp_business_account\",\"entry\":[{\"id\":\"W\",\"changes\":[{\"field\":\"messages\",\"value\":{\"messaging_product\":\"whatsapp\",\"metadata\":{\"phone_number_id\":\"1\"},\"messages\":[{\"id\":\"$1\",\"from\":\"$2\",\"timestamp\":\"1760000000\",\"type\":\"image\",\"image\":{\"id\":\"$media\",\"mime_type\":\"image/jpeg\"}}]}}]}]}"
   printf '%-34s -> ' "whatsapp $1 ($3)"; post /api/webhooks/whatsapp x-hub-signature-256 "$WA_SECRET" "$body"; echo
 }
 

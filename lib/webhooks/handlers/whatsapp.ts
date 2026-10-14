@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { errorFields } from '@/lib/logger';
-import { MediaFetchError } from '@/lib/services/media-fetcher';
+import { MediaStoreError } from '@/lib/services/media-store';
 import type { WebhookDeps } from '@/lib/webhooks/deps';
 import { verifySignature } from '@/lib/webhooks/hmac';
 import { accepted, ignored, readRawBody, tooLarge, unauthorized, unavailable } from '@/lib/webhooks/http';
@@ -75,12 +75,12 @@ export async function handleWhatsAppWebhook(req: Request, deps: WebhookDeps): Pr
         continue;
       }
 
-      const file = await media.download(msg.mediaId);
+      const bytes = await media.get(msg.mediaId);
       const [result] = await ingestion.accept({
         source: 'WHATSAPP',
         externalMessageId: msg.messageId,
         scope: { kind: 'WHATSAPP', phone: msg.fromPhone },
-        attachments: [{ fileName: msg.fileName ?? 'whatsapp-media', mimeType: msg.mimeType, bytes: file.bytes }],
+        attachments: [{ fileName: msg.fileName ?? 'whatsapp-media', mimeType: msg.mimeType, bytes }],
       });
       if (result && !result.duplicate) {
         documents++;
@@ -89,7 +89,7 @@ export async function handleWhatsAppWebhook(req: Request, deps: WebhookDeps): Pr
         duplicates++;
       }
     } catch (err) {
-      if (err instanceof MediaFetchError) {
+      if (err instanceof MediaStoreError) {
         // 401/403 means OUR token is bad/expired: that is our outage, not the sender's problem. Retry so nothing is lost.
         const ourAuthProblem = err.status === 401 || err.status === 403;
         if (err.retryable || ourAuthProblem) {

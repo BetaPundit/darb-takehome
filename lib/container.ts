@@ -5,8 +5,8 @@ import { createExtractor } from '@/lib/extraction';
 import { consoleLogger, errorFields } from '@/lib/logger';
 import { LocalFsBlobStore } from '@/lib/services/blob-store';
 import { createIngestionService } from '@/lib/services/document-ingestion';
-import { FixtureMediaFetcher, UnconfiguredMediaFetcher } from '@/lib/services/fixture-media-fetcher';
-import { WhatsAppMediaFetcher, type MediaFetcher } from '@/lib/services/media-fetcher';
+import { FixtureMediaStore, UnconfiguredMediaStore } from '@/lib/services/fixture-media-store';
+import { WhatsAppCloudMediaStore, type MediaStore } from '@/lib/services/media-store';
 import type { WebhookDeps } from '@/lib/webhooks/deps';
 
 let cached: WebhookDeps | undefined;
@@ -17,11 +17,11 @@ export function getWebhookDeps(): WebhookDeps {
   const env = getEnv();
   const log = consoleLogger;
 
-  const media: MediaFetcher = env.WHATSAPP_ACCESS_TOKEN
-    ? new WhatsAppMediaFetcher({ accessToken: env.WHATSAPP_ACCESS_TOKEN, maxBytes: env.MAX_BODY_BYTES })
+  const media: MediaStore = env.WHATSAPP_ACCESS_TOKEN
+    ? new WhatsAppCloudMediaStore({ accessToken: env.WHATSAPP_ACCESS_TOKEN, maxBytes: env.MAX_BODY_BYTES })
     : env.NODE_ENV === 'production'
-      ? new UnconfiguredMediaFetcher()
-      : new FixtureMediaFetcher();
+      ? new UnconfiguredMediaStore()
+      : new FixtureMediaStore();
 
   const ingestion = createIngestionService({
     db,

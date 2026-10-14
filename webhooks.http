@@ -2,8 +2,8 @@
 ### Start the app first:  npm run db:seed && npm run dev
 ### These run UNSIGNED, which the server accepts only when no secrets are configured (dev mode).
 ### With secrets set, use scripts/send-fixtures.sh instead: it signs each body with HMAC-SHA256.
-### Fixture bytes are the ASCII string "DARB-FIXTURE:<name>"; the mock extractor looks them up by SHA-256.
-### Print every fixture's hash/base64:  npx tsx scripts/print-fixtures.ts
+### The "files" are fixtures/documents/<name>.fixture (bytes: the ASCII string "DARB-FIXTURE:<name>"); the mock extractor looks them up by SHA-256.
+### WhatsApp media ids (media_4471, ...) are resolved through fixtures/media-map.json. Print every fixture's hash/base64:  npx tsx scripts/print-fixtures.ts
 
 @base = http://localhost:3000
 
@@ -57,7 +57,7 @@ Content-Type: application/json
 GET {{base}}/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=YOUR_TOKEN&hub.challenge=1158201444
 
 ### 6. WhatsApp image from driver +966 50 111 1111   -> AUTO_MATCHED to txn_exact
-###    The media id "fixture:exact" is resolved by a dev-only fixture fetcher (no Meta credentials needed).
+###    The media id media_4471 (fixtures/documents/exact.fixture) is resolved by a dev-only fixture MediaStore (no Meta credentials needed).
 POST {{base}}/api/webhooks/whatsapp
 Content-Type: application/json
 
@@ -75,7 +75,7 @@ Content-Type: application/json
           "from": "966501111111",
           "timestamp": "1760000000",
           "type": "image",
-          "image": { "id": "fixture:exact", "mime_type": "image/jpeg" }
+          "image": { "id": "media_4471", "mime_type": "image/jpeg" }
         }]
       }
     }]
@@ -91,7 +91,7 @@ Content-Type: application/json
   "entry": [{ "id": "W", "changes": [{ "field": "messages", "value": {
     "messaging_product": "whatsapp", "metadata": { "phone_number_id": "123" },
     "messages": [{ "id": "wamid.http-2", "from": "966501111111", "timestamp": "1760000000", "type": "image",
-                   "image": { "id": "fixture:ambiguous", "mime_type": "image/jpeg" } }]
+                   "image": { "id": "media_4472", "mime_type": "image/jpeg" } }]
   } }] }]
 }
 

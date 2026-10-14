@@ -1,10 +1,12 @@
+import { fixtureHash } from '@/lib/extraction/fixtures';
 import type { PrismaClient } from '@/lib/generated/prisma/client';
-import { FixtureMediaFetcher } from '@/lib/services/fixture-media-fetcher';
-import { MediaFetchError, type MediaFetcher } from '@/lib/services/media-fetcher';
+import { FixtureMediaStore } from '@/lib/services/fixture-media-store';
+import { MediaStoreError, type MediaStore } from '@/lib/services/media-store';
 import { handleWhatsAppVerify, handleWhatsAppWebhook } from '@/lib/webhooks/handlers/whatsapp';
 import { seedDatabase } from '@/prisma/seed-data';
 import { createTestDb } from '../helpers/test-db';
-import { makeDeps, SECRETS, signedRequest, waPayload } from './helpers';
+import { createCapturingLogger } from '../logging/capture';
+import { makeDeps, mediaIdFor, SECRETS, signedRequest, waPayload } from './helpers';
 
 const URL_ = 'http://localhost/api/webhooks/whatsapp';
 const SIG = 'x-hub-signature-256';
@@ -39,14 +41,14 @@ describe('WhatsApp webhook', () => {
       await deps.drain();
       return { res, body: (await res.json()) as Record<string, unknown> };
     };
-    const countingMedia = (inner: MediaFetcher) => {
+    const countingMedia = (inner: MediaStore) => {
       const calls: string[] = [];
-      return { calls, fetcher: { download: (id: string) => (calls.push(id), inner.download(id)) } as MediaFetcher };
+      return { calls, store: { get: (id: string) => (calls.push(id), inner.get(id)) } as MediaStore };
     };
-    const failingMedia = (err: MediaFetchError): MediaFetcher => ({ download: () => Promise.reject(err) });
+    const failingMedia = (err: MediaStoreError): MediaStore => ({ get: () => Promise.reject(err) });
 
     it('image message: phone-scoped document created, processed and auto-matched', async () => {
-      const { res, body } = await post(waPayload([{ id: 'wamid.A', from: DRIVER1, media: 'fixture:exact' }]));
+      const { res, body } = await post(waPayload([{ id: 'wamid.A', from: DRIVER1, media: mediaIdFor('exact') }]));
       expect(res.status).toBe(200);
       expect(body).toMatchObject({ status: 'accepted', documents: 1 });
       const doc = await db.document.findFirstOrThrow({ where: { externalMessageId: 'wamid.A' }, include: { matches: true } });
@@ -54,9 +56,36 @@ describe('WhatsApp webhook', () => {
       expect(doc.matches[0]).toMatchObject({ transactionId: 'txn_exact', status: 'AUTO_CONFIRMED' });
     });
 
+    it('the assignment example id media_4471 resolves through fixtures/media-map.json, end to end', async () => {
+      const { res, body } = await post(waPayload([{ id: 'wamid.M', from: DRIVER1, media: 'media_4471' }]));
+      expect(res.status).toBe(200);
+      expect(body).toMatchObject({ status: 'accepted', documents: 1 });
+      const doc = await db.document.findFirstOrThrow({ where: { externalMessageId: 'wamid.M' }, include: { matches: true } });
+      expect(doc).toMatchObject({ status: 'MATCHED', extractionConfidence: 0.95, contentHash: fixtureHash('exact') });
+      expect(doc.extraction).toMatchObject({ merchantName: 'Aramco Retail Station 0412', totalAmount: 18750 });
+      expect(doc.matches[0]).toMatchObject({ transactionId: 'txn_exact', status: 'AUTO_CONFIRMED' });
+    });
+
+    it('a media id that is not in the map (media_9999) is a permanent skip: 200, no document, and the reason is logged', async () => {
+      const log = createCapturingLogger();
+      const { res, body } = await post(waPayload([{ id: 'wamid.N', from: DRIVER1, media: 'media_9999' }]), makeDeps(db, { log }));
+      expect(res.status).toBe(200);
+      expect(body).toMatchObject({ status: 'accepted', documents: 0, skipped: 1 });
+      expect(await db.document.count({ where: { externalMessageId: 'wamid.N' } })).toBe(0);
+      const logged = log.entries.find((e) => e.event === 'webhook.media_permanent_failure');
+      expect(logged).toMatchObject({ level: 'warn', fields: { messageId: 'wamid.N', code: 'NOT_FOUND', status: null } });
+      expect(JSON.stringify(log.entries)).not.toContain('media_9999'); // the id is attacker-supplied: not echoed into logs
+    });
+
+    it('the old fixture:<name> media id convention is gone: it is just an unknown id', async () => {
+      const { res, body } = await post(waPayload([{ id: 'wamid.O', from: DRIVER1, media: 'fixture:exact' }]));
+      expect(res.status).toBe(200);
+      expect(body).toMatchObject({ documents: 0, skipped: 1 });
+    });
+
     it('bad or missing signature => 401, no media download, nothing stored', async () => {
-      const media = countingMedia(new FixtureMediaFetcher());
-      const deps = makeDeps(db, { media: media.fetcher });
+      const media = countingMedia(new FixtureMediaStore());
+      const deps = makeDeps(db, { media: media.store });
       const forged = await post(waPayload([{ id: 'wamid.B', from: DRIVER1 }]), deps, 'attacker-secret');
       expect(forged.res.status).toBe(401);
       const unsigned = await handleWhatsAppWebhook(new Request(URL_, { method: 'POST', body: JSON.stringify(waPayload([{ id: 'wamid.B', from: DRIVER1 }])) }), deps.deps);
@@ -76,47 +105,47 @@ describe('WhatsApp webhook', () => {
     });
 
     it('redelivery of the same wamid does NOT download the media again and creates nothing new', async () => {
-      const media = countingMedia(new FixtureMediaFetcher());
-      const payload = waPayload([{ id: 'wamid.C', from: DRIVER1, media: 'fixture:exact' }]);
-      await post(payload, makeDeps(db, { media: media.fetcher }));
-      const again = await post(payload, makeDeps(db, { media: media.fetcher }));
+      const media = countingMedia(new FixtureMediaStore());
+      const payload = waPayload([{ id: 'wamid.C', from: DRIVER1, media: mediaIdFor('exact') }]);
+      await post(payload, makeDeps(db, { media: media.store }));
+      const again = await post(payload, makeDeps(db, { media: media.store }));
       expect(again.res.status).toBe(200);
       expect(media.calls).toHaveLength(1);
       expect(await db.document.count({ where: { externalMessageId: 'wamid.C' } })).toBe(1);
     });
 
     it('same photo forwarded under a new wamid by the same driver is a duplicate (content hash)', async () => {
-      await post(waPayload([{ id: 'wamid.D1', from: DRIVER1, media: 'fixture:exact' }]));
-      const { body } = await post(waPayload([{ id: 'wamid.D2', from: DRIVER1, media: 'fixture:exact' }]));
+      await post(waPayload([{ id: 'wamid.D1', from: DRIVER1, media: mediaIdFor('exact') }]));
+      const { body } = await post(waPayload([{ id: 'wamid.D2', from: DRIVER1, media: mediaIdFor('exact') }]));
       expect(body).toMatchObject({ status: 'accepted', documents: 0 });
       expect(await db.document.count({ where: { externalMessageId: { in: ['wamid.D1', 'wamid.D2'] } } })).toBe(1);
     });
 
     it('retryable media failure (network/5xx/429) => 503 so Meta redelivers', async () => {
-      const res = await post(waPayload([{ id: 'wamid.E', from: DRIVER1 }]), makeDeps(db, { media: failingMedia(new MediaFetchError('NETWORK', true, 'x')) }));
+      const res = await post(waPayload([{ id: 'wamid.E', from: DRIVER1 }]), makeDeps(db, { media: failingMedia(new MediaStoreError('NETWORK', true, 'x')) }));
       expect(res.res.status).toBe(503);
       expect(res.res.headers.get('retry-after')).toBeTruthy();
     });
 
     it('OUR token expired (401/403 from Graph) is also retried, not silently dropped', async () => {
-      const res = await post(waPayload([{ id: 'wamid.F', from: DRIVER1 }]), makeDeps(db, { media: failingMedia(new MediaFetchError('HTTP_ERROR', false, 'x', 401)) }));
+      const res = await post(waPayload([{ id: 'wamid.F', from: DRIVER1 }]), makeDeps(db, { media: failingMedia(new MediaStoreError('HTTP_ERROR', false, 'x', 401)) }));
       expect(res.res.status).toBe(503);
     });
 
     it('permanent media failure (expired media, 404) => 200 skipped: redelivery would never succeed', async () => {
-      const res = await post(waPayload([{ id: 'wamid.G', from: DRIVER1 }]), makeDeps(db, { media: failingMedia(new MediaFetchError('HTTP_ERROR', false, 'x', 404)) }));
+      const res = await post(waPayload([{ id: 'wamid.G', from: DRIVER1 }]), makeDeps(db, { media: failingMedia(new MediaStoreError('HTTP_ERROR', false, 'x', 404)) }));
       expect(res.res.status).toBe(200);
       expect(res.body).toMatchObject({ skipped: 1 });
     });
 
     it('partial batch: one message accepted, one fails retryably => 503, and the redelivery does not duplicate the first', async () => {
       let flaky = true;
-      const media: MediaFetcher = {
-        download: (id) => (id === 'fixture:rounding' && flaky ? Promise.reject(new MediaFetchError('TIMEOUT', true, 'slow')) : new FixtureMediaFetcher().download(id)),
+      const media: MediaStore = {
+        get: (id) => (id === mediaIdFor('rounding') && flaky ? Promise.reject(new MediaStoreError('TIMEOUT', true, 'slow')) : new FixtureMediaStore().get(id)),
       };
       const payload = waPayload([
-        { id: 'wamid.H1', from: DRIVER1, media: 'fixture:exact' },
-        { id: 'wamid.H2', from: '966502222222', media: 'fixture:rounding' },
+        { id: 'wamid.H1', from: DRIVER1, media: mediaIdFor('exact') },
+        { id: 'wamid.H2', from: '966502222222', media: mediaIdFor('rounding') },
       ]);
       expect((await post(payload, makeDeps(db, { media }))).res.status).toBe(503);
       expect(await db.document.count({ where: { externalMessageId: 'wamid.H1' } })).toBe(1);
@@ -128,20 +157,20 @@ describe('WhatsApp webhook', () => {
     });
 
     it('non-allowed mime types (e.g. audio, docx) are skipped without a download', async () => {
-      const media = countingMedia(new FixtureMediaFetcher());
-      const { body } = await post(waPayload([{ id: 'wamid.I', from: DRIVER1, mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }]), makeDeps(db, { media: media.fetcher }));
+      const media = countingMedia(new FixtureMediaStore());
+      const { body } = await post(waPayload([{ id: 'wamid.I', from: DRIVER1, mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }]), makeDeps(db, { media: media.store }));
       expect(body).toMatchObject({ skipped: 1, documents: 0 });
       expect(media.calls).toEqual([]);
     });
 
     it('extractor failure is invisible to Meta: 200, document FAILED', async () => {
-      const { res } = await post(waPayload([{ id: 'wamid.J', from: DRIVER1, media: 'fixture:forced_failure' }]));
+      const { res } = await post(waPayload([{ id: 'wamid.J', from: DRIVER1, media: mediaIdFor('forced_failure') }]));
       expect(res.status).toBe(200);
       expect((await db.document.findFirstOrThrow({ where: { externalMessageId: 'wamid.J' } })).status).toBe('FAILED');
     });
 
     it('a driver can only match their OWN transactions: another driver sending the same receipt stays UNMATCHED', async () => {
-      await post(waPayload([{ id: 'wamid.K', from: '966502222222', media: 'fixture:exact' }])); // txn_exact belongs to driver 1
+      await post(waPayload([{ id: 'wamid.K', from: '966502222222', media: mediaIdFor('exact') }])); // txn_exact belongs to driver 1
       expect((await db.document.findFirstOrThrow({ where: { externalMessageId: 'wamid.K' } })).status).toBe('UNMATCHED');
     });
   });

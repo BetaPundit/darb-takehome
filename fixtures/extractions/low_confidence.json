@@ -1,0 +1,12 @@
+{
+  "documentType": "RECEIPT",
+  "merchantName": "Nadec Foods",
+  "vatNumber": null,
+  "totalAmount": 7200,
+  "currency": "SAR",
+  "documentDate": "2026-10-04",
+  "cardLast4": null,
+  "invoiceNumber": null,
+  "rawText": "N4DEC F00ds\nDa1ry\nTota1: 72.00 SAR\n2026-10-04",
+  "extractionConfidence": 0.45
+}

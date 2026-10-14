@@ -104,7 +104,7 @@ describe('ingestion: idempotency, failures, concurrency, recovery', () => {
     });
 
     it('extractor returns schema-invalid output => FAILED INVALID_OUTPUT, nothing reaches the matcher', async () => {
-      const bad = { ...exactExtraction, amountMinor: 'lots' } as unknown as ExtractedDocument;
+      const bad = { ...exactExtraction, totalAmount: 'lots' } as unknown as ExtractedDocument;
       const { result, doc } = await sendWith({ extract: async () => bad });
       expect(result).toEqual({ status: 'FAILED', reason: 'INVALID_OUTPUT' });
       expect(doc.extraction).toBeNull();

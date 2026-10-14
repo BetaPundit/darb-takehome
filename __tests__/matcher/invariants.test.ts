@@ -81,7 +81,7 @@ describe('adversarial documents (limits of what a crafted receipt can do)', () =
   it('an invoice claiming a merchant name from a different transaction cannot steal it without matching the amount', () => {
     const victim = txn({ id: 'victim', merchantName: 'ARAMCO RETAIL 0412', amountMinor: 18750 });
     const r = matchDocument({
-      document: doc({ merchantName: 'Aramco Retail', amountMinor: 100, documentDate: '2026-10-02' }),
+      document: doc({ merchantName: 'Aramco Retail', totalAmount: 100, documentDate: '2026-10-02' }),
       sender: WA_SENDER,
       candidates: [victim],
     });
@@ -101,7 +101,7 @@ describe('adversarial documents (limits of what a crafted receipt can do)', () =
     const t = txn({ merchantName: 'ARAMCO RETAIL 0412' });
     const r = matchDocument({ document: doc({ merchantName: 'Retail' }), sender: WA_SENDER, candidates: [t] });
     expect(r.candidates[0]!.signals.merchant).toBe(1); // documented weakness of the subset rule
-    const wrongAmount = matchDocument({ document: doc({ merchantName: 'Retail', amountMinor: 1 }), sender: WA_SENDER, candidates: [t] });
+    const wrongAmount = matchDocument({ document: doc({ merchantName: 'Retail', totalAmount: 1 }), sender: WA_SENDER, candidates: [t] });
     expect(wrongAmount.outcome).toBe('UNMATCHED');
   });
 });
@@ -109,7 +109,7 @@ describe('adversarial documents (limits of what a crafted receipt can do)', () =
 describe('documented limitation: cross-script merchant names', () => {
   it('Arabic "مكتبة جرير" vs English "JARIR BOOKSTORE": merchant signal is ~0, so an otherwise perfect match is only reviewable, never AUTO', () => {
     const r = matchDocument({
-      document: doc({ merchantName: 'مكتبة جرير', amountMinor: 11500 }),
+      document: doc({ merchantName: 'مكتبة جرير', totalAmount: 11500 }),
       sender: WA_SENDER,
       candidates: [txn({ merchantName: 'JARIR BOOKSTORE', amountMinor: 11500 })],
     });

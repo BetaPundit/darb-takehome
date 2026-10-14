@@ -158,7 +158,7 @@ export function createIngestionService(deps: IngestDeps) {
     let extracted;
     const extractStart = Date.now();
     try {
-      extracted = await withTimeout(extractor.extract({ bytes, mimeType: doc.mimeType }), extractionTimeoutMs);
+      extracted = await withTimeout(extractor.extract(bytes, doc.mimeType), extractionTimeoutMs);
     } catch (err) {
       // Only the code is stored/logged: error messages from providers can echo document content.
       const reason = err instanceof ExtractionError ? err.code : 'EXTRACTOR_ERROR';
@@ -175,7 +175,7 @@ export function createIngestionService(deps: IngestDeps) {
 
     const moved = await db.document.updateMany({
       where: { id: documentId, status: 'RECEIVED' },
-      data: { status: 'EXTRACTED', extraction: parsed.data, extractionConfidence: parsed.data.confidence },
+      data: { status: 'EXTRACTED', extraction: parsed.data, extractionConfidence: parsed.data.extractionConfidence },
     });
     if (moved.count !== 1) return { status: 'SKIPPED' };
 

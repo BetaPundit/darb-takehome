@@ -1,3 +1,4 @@
+import { ZodError } from 'zod';
 import type { PrismaClient } from '@/lib/generated/prisma/client';
 import type { Logger } from '@/lib/logger';
 import { ConcurrentModificationError, matchAndPersist } from '@/lib/services/match-pipeline';
@@ -56,7 +57,13 @@ export async function rematchForTransactions(
       if (result.outcome === 'NEEDS_REVIEW') summary.sentToReview++;
     } catch (err) {
       // Someone else moved the document first (e.g. a reviewer): that is fine, skip it.
-      if (!(err instanceof ConcurrentModificationError)) throw err;
+      if (err instanceof ConcurrentModificationError) continue;
+      // A stored extraction from before a field rename no longer parses: nothing to re-match, and it must not stop the rest.
+      if (err instanceof ZodError) {
+        log.warn('rematch.extraction_unreadable', { documentId: id });
+        continue;
+      }
+      throw err;
     }
   }
   log.info('rematch.done', { ...summary, transactions: transactionIds.length });

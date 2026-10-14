@@ -1,3 +1,4 @@
+import { FIXTURE_NAMES, fixtureExpected, type FixtureName } from '@/lib/extraction/fixtures';
 import type { ExtractedDocument } from '@/lib/extraction/types';
 import type { MatcherCandidate, MatchSender } from '@/lib/services/transaction-matcher';
 
@@ -9,13 +10,13 @@ export function doc(overrides: Partial<ExtractedDocument> = {}): ExtractedDocume
     documentType: 'RECEIPT',
     merchantName: 'Al Baik',
     vatNumber: null,
-    amountMinor: 4500,
+    totalAmount: 4500,
     currency: 'SAR',
     documentDate: '2026-10-02',
     cardLast4: null,
     invoiceNumber: null,
     rawText: '',
-    confidence: 0.9,
+    extractionConfidence: 0.9,
     ...overrides,
   };
 }
@@ -101,46 +102,10 @@ export const SEEDED_TXNS: readonly MatcherCandidate[] = [
   seeded('txn_arabic', DESERT, D3, 'مطعم البيك', 3500, '2026-10-05', '20:10', null),
 ];
 
-type Fixture = Partial<ExtractedDocument> & Pick<ExtractedDocument, 'merchantName' | 'amountMinor' | 'documentDate' | 'confidence'>;
-const fx = (f: Fixture): ExtractedDocument => doc(f);
-
-export const SCENARIO_DOCS = {
-  exact: fx({ merchantName: 'Aramco Retail Station 0412', amountMinor: 18750, documentDate: '2026-10-01', confidence: 0.95 }),
-  ambiguous: fx({ merchantName: 'Al Baik', amountMinor: 4500, documentDate: '2026-10-02', confidence: 0.93 }),
-  ambiguous_last4: fx({ merchantName: 'Al Baik', amountMinor: 4500, documentDate: '2026-10-02', cardLast4: '4242', confidence: 0.93 }),
-  tip: fx({ merchantName: 'Starbucks Coffee Company', amountMinor: 6000, documentDate: '2026-10-03', confidence: 0.9 }),
-  rounding: fx({ merchantName: 'Panda Retail Co', amountMinor: 23100, documentDate: '2026-10-03', confidence: 0.92 }),
-  prevat: fx({
-    documentType: 'TAX_INVOICE',
-    merchantName: 'Jarir Bookstore',
-    amountMinor: 10000,
-    documentDate: '2026-10-04',
-    invoiceNumber: 'INV-4471',
-    vatNumber: '300112233400003',
-    confidence: 0.94,
-  }),
-  no_transaction: fx({
-    documentType: 'TAX_INVOICE',
-    merchantName: 'Saudi Electricity Company',
-    amountMinor: 99999,
-    documentDate: '2026-10-02',
-    invoiceNumber: 'SEC-5521',
-    vatNumber: '300000000000003',
-    confidence: 0.96,
-  }),
-  garbage: fx({ documentType: 'UNKNOWN', merchantName: null, amountMinor: null, currency: null, documentDate: null, confidence: 0.1 }),
-  low_confidence: fx({ merchantName: 'Nadec Foods', amountMinor: 7200, documentDate: '2026-10-04', confidence: 0.45 }),
-  email_exact: fx({
-    documentType: 'TAX_INVOICE',
-    merchantName: 'ADNOC Distribution LLC',
-    amountMinor: 25000,
-    documentDate: '2026-10-04',
-    invoiceNumber: 'INV-88231',
-    vatNumber: '300000000000003',
-    confidence: 0.97,
-  }),
-  arabic: fx({ merchantName: 'مطعم البيك - فرع الرياض', amountMinor: 3500, documentDate: '2026-10-05', confidence: 0.9 }),
-  already_confirmed: fx({ merchantName: 'SASCO Station 118', amountMinor: 8000, documentDate: '2026-10-01', confidence: 0.95 }),
-} satisfies Record<string, ExtractedDocument>;
+/** The OCR output of every fixture in fixtures/extractions, so the matcher scenarios cannot drift from the files. */
+type ScenarioName = Exclude<FixtureName, 'forced_failure'>;
+export const SCENARIO_DOCS = Object.fromEntries(
+  FIXTURE_NAMES.filter((n): n is ScenarioName => n !== 'forced_failure').map((n) => [n, fixtureExpected(n)]),
+) as Record<ScenarioName, ExtractedDocument>;
 
 export const SENDERS = { alnoor_d1: wa(D1), alnoor_d2: wa(D2), desert_d3: wa(D3), alnoor_email: email(ALNOOR), desert_email: email(DESERT) };

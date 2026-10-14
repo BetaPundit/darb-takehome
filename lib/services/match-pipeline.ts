@@ -1,6 +1,7 @@
 import { DEFAULT_MATCHER_CONFIG } from '@/lib/config/matching';
 import { extractedDocumentSchema } from '@/lib/extraction/types';
 import { Prisma, type PrismaClient } from '@/lib/generated/prisma/client';
+import { documentDay } from '@/lib/matching/dates';
 import { matchDocument, type MatcherCandidate, type MatchResult } from '@/lib/services/transaction-matcher';
 
 /**
@@ -65,14 +66,14 @@ export async function withdrawCompetingOffers(tx: Prisma.TransactionClient, tran
   }
 }
 
-function candidateWindow(documentDate: string | null, now: Date): { from: Date; to: Date } {
-  const m = documentDate ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(documentDate) : null;
-  const dayStartUtc = m ? Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : NaN;
-  if (Number.isNaN(dayStartUtc)) {
+export function candidateWindow(documentDate: string | null, now: Date): { from: Date; to: Date } {
+  const offsetMinutes = DEFAULT_MATCHER_CONFIG.utcOffsetMinutes;
+  const day = documentDate === null ? null : documentDay(documentDate, offsetMinutes);
+  if (day === null) {
     return { from: new Date(now.getTime() - CANDIDATE_WINDOW.fallbackLookbackDays * DAY_MS), to: new Date(now.getTime() + DAY_MS) };
   }
   // the document date is a Riyadh calendar day: its start in UTC is midnight minus the offset
-  const start = dayStartUtc - DEFAULT_MATCHER_CONFIG.utcOffsetMinutes * 60_000;
+  const start = day * DAY_MS - offsetMinutes * 60_000;
   return {
     from: new Date(start - CANDIDATE_WINDOW.beforeDays * DAY_MS),
     to: new Date(start + (CANDIDATE_WINDOW.afterDays + 1) * DAY_MS),

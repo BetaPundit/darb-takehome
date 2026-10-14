@@ -1,6 +1,7 @@
 import { MockExtractor } from '@/lib/extraction/mock-extractor';
 import type { PrismaClient } from '@/lib/generated/prisma/client';
 import { silentLogger } from '@/lib/logger';
+import { createCapturingLogger } from '../logging/capture';
 import { rematchForTransactions } from '@/lib/services/rematch';
 import { handleTransactionsWebhook } from '@/lib/webhooks/handlers/transactions';
 import { seedDatabase } from '@/prisma/seed-data';
@@ -92,6 +93,23 @@ describe('transaction feed + re-match', () => {
     const summary = await rematchForTransactions(db, [(await db.transaction.create({ data: { externalRef: 'other', clientId: 'client_desert', driverPhone: '+966503333333', merchantName: 'ARAMCO RETAIL 0412', amountMinor: 18750, occurredAt: new Date('2026-10-01T06:15:00Z') } })).id], NOW, silentLogger);
     expect(summary.examined).toBe(0);
     expect((await db.document.findUniqueOrThrow({ where: { id: documentId } })).status).toBe('UNMATCHED');
+  });
+
+  it('a stored extraction in an old shape (pre-rename: amountMinor/confidence) is skipped and logged, and the loop carries on', async () => {
+    await db.transaction.delete({ where: { id: 'txn_exact' } });
+    const { service } = makeService(db);
+    const stale = await sendFixture(service, 'no_transaction', DRIVER_1); // UNMATCHED, received first
+    await db.document.update({ where: { id: stale.documentId }, data: { extraction: { documentType: 'TAX_INVOICE', amountMinor: 99999, confidence: 0.96 } } });
+    const healthy = await sendFixture(service, 'exact', DRIVER_1); // UNMATCHED, waiting for its transaction
+    const late = await db.transaction.create({ data: { externalRef: 'late', clientId: 'client_alnoor', driverPhone: '+966501111111', merchantName: 'ARAMCO RETAIL 0412', amountMinor: 18750, occurredAt: new Date('2026-10-01T06:15:00Z') } });
+
+    const log = createCapturingLogger();
+    const summary = await rematchForTransactions(db, [late.id], NOW, log);
+
+    expect(summary).toEqual({ examined: 2, autoMatched: 1, sentToReview: 0 });
+    expect((await db.document.findUniqueOrThrow({ where: { id: healthy.documentId } })).status).toBe('MATCHED');
+    expect((await db.document.findUniqueOrThrow({ where: { id: stale.documentId } })).status).toBe('UNMATCHED');
+    expect(log.entries.find((e) => e.event === 'rematch.extraction_unreadable')?.fields).toMatchObject({ documentId: stale.documentId });
   });
 
   it('unusable extractions (INSUFFICIENT_DATA) are not re-examined', async () => {

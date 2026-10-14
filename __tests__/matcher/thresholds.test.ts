@@ -104,20 +104,20 @@ describe('amount gate', () => {
 
 describe('extraction confidence', () => {
   it('confidence exactly at minConfidenceForAuto may auto-match', () => {
-    expect(run(doc({ confidence: 0.6 })).outcome).toBe('AUTO_MATCHED');
+    expect(run(doc({ extractionConfidence: 0.6 })).outcome).toBe('AUTO_MATCHED');
   });
 
   it('confidence just below caps at NEEDS_REVIEW / LOW_EXTRACTION_CONFIDENCE', () => {
-    expect(run(doc({ confidence: 0.5999 }))).toMatchObject({ outcome: 'NEEDS_REVIEW', reason: 'LOW_EXTRACTION_CONFIDENCE' });
+    expect(run(doc({ extractionConfidence: 0.5999 }))).toMatchObject({ outcome: 'NEEDS_REVIEW', reason: 'LOW_EXTRACTION_CONFIDENCE' });
   });
 
   it('low confidence takes precedence over AMBIGUOUS in the reason', () => {
-    const r = run(doc({ confidence: 0.3 }), [txn({ id: 'a' }), txn({ id: 'b' })]);
+    const r = run(doc({ extractionConfidence: 0.3 }), [txn({ id: 'a' }), txn({ id: 'b' })]);
     expect(r).toMatchObject({ outcome: 'NEEDS_REVIEW', reason: 'LOW_EXTRACTION_CONFIDENCE' });
   });
 
   it('low confidence does not hide that nothing matched: still UNMATCHED', () => {
-    expect(run(doc({ confidence: 0.3 }), [txn({ amountMinor: 99999 })]).outcome).toBe('UNMATCHED');
+    expect(run(doc({ extractionConfidence: 0.3 }), [txn({ amountMinor: 99999 })]).outcome).toBe('UNMATCHED');
   });
 });
 

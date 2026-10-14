@@ -17,6 +17,7 @@ flowchart LR
 
   RE --> ING["Ingestion service"]
   RW --> ING
+  RW --> MEDIA["MediaStore (WhatsApp Cloud API | fixtures)"]
   RT --> RMS["Re-match service"]
   RV --> REV["Review actions"]
 
@@ -59,7 +60,7 @@ sequenceDiagram
   R-->>P: 200 accepted
   Note over R,I: after() schedules processDocument
   I->>D: claim (compare-and-set RECEIVED + lease)
-  I->>X: extract(bytes)
+  I->>X: extract(file, mimeType)
   X-->>I: ExtractedDocument (re-validated with Zod)
   I->>D: status EXTRACTED + extraction JSON
   I->>D: load candidates in scope and date window
@@ -110,7 +111,7 @@ The result carries at most 5 plausible candidates, each with its score, per-sign
 |---|---|
 | **amount** (0.45) | `d = charge − invoice`. `d = 0` → 1.00. `|d| ≤ 5 halalas` (rounding) → 0.97. `0 < d ≤ 20%` of the invoice (tip) → `0.85 − 0.45·d/tipMax`, falling from 0.85 to 0.40, flag `TIP_SUSPECTED`. Charge **below** the invoice → 0 (flag `AMOUNT_BELOW_CHARGE`). Also tried against `invoice × 1.15` (document shows the pre-VAT total) for the exact and rounding rows only, ×0.90, flag `PRE_VAT_AMOUNT` |
 | **merchant** (0.25) | Normalize both names, then `max(token-set ratio, Jaro-Winkler on the space-less string)`. A token subset scores 1.0, so "Aramco Retail Station 0412" matches "ARAMCO RETAIL 0412" |
-| **date** (0.20) | Calendar days in UTC+3. Same day 1.0. Invoice 1/2/3 days **before** the charge (settlement lag) 0.8/0.6/0.4. Invoice 1 day **after** the charge 0.7. Else 0. Unreadable date 0.5 with flag `DATE_MISSING` |
+| **date** (0.20) | Calendar days in UTC+3. A document date is ISO 8601: a date-only value (`2026-10-01`) is that calendar day; a datetime with `Z` or an offset (`2026-10-01T22:30:00Z`) is converted to an instant and its Riyadh day is used (here 2026-10-02). Same day 1.0. Invoice 1/2/3 days **before** the charge (settlement lag) 0.8/0.6/0.4. Invoice 1 day **after** the charge 0.7. Else 0. Unreadable date 0.5 with flag `DATE_MISSING` |
 | **card** (0.10) | Both last4 known and equal → 1. Both known and different → 0 **and** the total is halved (`CARD_MISMATCH`). Either unknown → no contribution and **no renormalization** |
 
 Gate: if the amount signal is below 0.05, the total is capped at 0.49 (below the review floor). A matching merchant and date must never make up for a wrong amount.
@@ -155,7 +156,7 @@ erDiagram
 - **The key invariant lives in the database:** `CREATE UNIQUE INDEX one_confirmed_per_txn ON DocumentMatch(transactionId) WHERE status IN ('AUTO_CONFIRMED','CONFIRMED')`. Prisma cannot express partial indexes, so it is appended by hand to the migration (verified: `migrate dev` reports no drift). Application checks are only a fast path. Two writers racing, whether two reviewers or an auto-confirm against a reviewer, cannot both win; the loser gets `P2002` and degrades.
 - All foreign keys are `onDelete: Restrict`. A confirmed financial link can never be removed by a cascade.
 - **`Document` idempotency keys:** unique `(source, externalMessageId, attachmentIndex)` and unique `(scopeKey, contentHash)`. `attachmentIndex` defaults to 0 rather than being nullable, because SQLite treats NULLs as distinct inside unique indexes, which would silently disable the dedupe. `scopeKey` (`client:<id>` or `phone:<e164>`) is a denormalised string so one plain unique index works for both channels.
-- `extraction` and `signals` are `Json`. They are validated with Zod at the write boundary (extractor output) and parsed again on read (review page), never trusted.
+- `extraction` and `signals` are `Json`. They are validated with Zod at the write boundary (extractor output) and parsed again on read (review page), never trusted. A row stored in an older shape (before the `totalAmount` / `extractionConfidence` rename) fails that parse: the review page shows "unreadable" for it and re-match skips it with a `rematch.extraction_unreadable` log.
 - Enums are exactly the ones in the assignment. SQLite stores them as TEXT without a CHECK constraint; Prisma validates them in the client.
 - Deviations from the minimal model in the assignment, each with a reason: `Client` / `ClientSender` (email sender → client scoping), `Transaction.cardLast4` (the matcher uses it), `Transaction.externalRef` (feed idempotency), `Document.attachmentIndex/scopeKey/blobKey/processingStartedAt/matchReason/failureReason`.
 
@@ -186,7 +187,7 @@ Races are tested by forcing the bad interleaving (injecting a competing confirma
 | Oversized or lying body | Cap enforced on `Content-Length` **and** on streamed bytes; base64 length is checked before decoding; strict base64 validation | No per-sender rate limiting |
 | Unknown email sender | Acknowledged, **not stored** (cannot be scoped, would let anyone fill the disk) | Any WhatsApp number that messages the business number creates a `phone:` scope. Accepted on purpose: dropping a legitimate driver's receipt is worse than storing junk. Storage growth from this is unbounded without per-sender limits |
 | SSRF / token leak via the media URL | Media id must be digits; the URL from Meta must be https, default port, on an allowlisted host suffix **before** the bearer token is sent; redirects are not followed; size is enforced while streaming | CDN-domain compromise is out of scope |
-| Path traversal | Blob keys must be 64 hex chars (validated on put and get); filenames are metadata only and never used as paths | |
+| Path traversal | Blob keys must be 64 hex chars (validated on put and get); filenames are metadata only and never used as paths. In `FixtureMediaStore` a webhook's media id is only a lookup key into `fixtures/media-map.json`, and every file the map names must resolve inside `fixtures/` (checked when the store is created) | A symlink placed inside `fixtures/` is not followed or checked; the directory is repo-controlled and the store is never used in production |
 | Cross-tenant matching | Scope is a hard SQL filter, re-checked in the matcher, and checked **again** at confirm time | A bug in all three would be needed |
 | Malicious document (prompt injection into the real OCR) | The Claude extractor treats the document as untrusted data, has no tools, never sees sender or transactions, output is schema-validated with unknown keys dropped | A prompt is not a guarantee. The damage is bounded: one wrong field on one document, which must still clear the amount gate, scope, 0.85 threshold, margin and confidence rules, and everything below that goes to a human |
 | Forged receipt copying the exact amount, date and merchant of a real transaction in the sender's own scope | One transaction per document; the one-confirmed index limits it to that one transaction | Inherent without cryptographic receipt provenance |
@@ -199,12 +200,12 @@ Races are tested by forcing the bad interleaving (injecting a competing confirma
 |---|---|
 | Extractor throws or hangs | Document → `FAILED` with a code (`TIMEOUT` after 30 s, `EXTRACTOR_ERROR`, `INVALID_OUTPUT`, …). The webhook already returned `200`. `retryFailed(id)` re-runs it |
 | Extractor returns garbage (unknown type, null amount) | Stored, then `UNMATCHED / INSUFFICIENT_DATA`; not re-examined by re-match |
-| Extractor returns schema-invalid JSON | `FAILED / INVALID_OUTPUT`; never reaches the matcher or the DB |
+| Extractor returns schema-invalid JSON (including a `documentDate` that is not ISO 8601 or does not exist) | `FAILED / INVALID_OUTPUT`; never reaches the matcher or the DB |
 | Blob missing at processing time | `FAILED / BLOB_MISSING` |
 | DB or blob store down while accepting | `503` + `Retry-After`; nothing half-stored |
 | WhatsApp media download: network, 5xx, 429 | `503`, Meta redelivers, idempotency prevents duplicates |
 | WhatsApp media: our token expired (401/403) | Also `503` (our outage, not the sender's problem) |
-| WhatsApp media: expired/404/too large/disallowed host | Logged and skipped; redelivery would never succeed |
+| WhatsApp media: expired/404/too large/disallowed host, or (fixture store) an id not in `media-map.json` (`NOT_FOUND`) | Logged (`webhook.media_permanent_failure`) and skipped; redelivery would never succeed |
 | Process dies between accept and process | Document stays `RECEIVED`; `reprocessStale()` re-drives it (see limitations: nothing calls it on a schedule) |
 | Lost auto-confirm race | Re-decide; worst case review (`CONFIRM_RACE_LOST`) |
 
@@ -212,9 +213,9 @@ Races are tested by forcing the bad interleaving (injecting a competing confirma
 
 - Currency SAR, VAT 15% (configurable), KSA VAT numbers 15 digits. Calendar days are evaluated in UTC+3 (no DST).
 - Email payload is a provider-neutral JSON I defined (`messageId`, `from`, `to`, `attachments[]` with base64). Real providers (SendGrid/Postmark/SES) would each need a small adapter in front of it. One document is created per attachment.
-- WhatsApp follows the Meta Cloud API envelope. Media bytes come from a second Graph API call that I could not run against real credentials: it is tested with an injected fake `fetch`.
+- WhatsApp follows the Meta Cloud API envelope. Media bytes come from a second Graph API call (`WhatsAppCloudMediaStore`, behind a `MediaStore` interface) that I could not run against real credentials: it is tested with an injected fake `fetch`. In development and tests `FixtureMediaStore` resolves a media id such as `media_4471` through `fixtures/media-map.json`.
 - A sender is a registered client mailbox (`ClientSender`) or a WhatsApp number; the driver's phone on the transaction is the WhatsApp scope. An email's `from` must be a bare address.
-- A document's date is a calendar date as printed. A card transaction is an instant.
+- A document's `documentDate` is ISO 8601: a calendar date as printed, or a datetime with `Z` or an offset. A datetime with no zone is rejected as invalid output (its day would depend on a timezone nobody stated), and so is an impossible date (2026-02-30). Matching compares Riyadh calendar days; a card transaction is an instant.
 - Candidate transactions are those from `docDate − 3 days` to `docDate + 14 days` in the sender's scope (the latter covers late settlement and monthly invoices), or the last 30 days if the document has no date, capped at 200.
 
 ## 9. Trade-offs and rejected alternatives
@@ -227,6 +228,7 @@ Races are tested by forcing the bad interleaving (injecting a competing confirma
 - **503 vs. 200 for transient failures.** Answering `200` and dropping the document would lose it; `503` makes the provider retry, and idempotency makes the retry free.
 - **Unknown WhatsApp numbers are accepted; unknown email senders are not.** Email has an explicit allowlist (`ClientSender`) to enforce; WhatsApp has no equivalent registry in the given model.
 - **Review actions split into `review-core.ts` and `review.ts`.** A `'use server'` module exposes every export as a callable endpoint, so the core functions that take a DB handle must not live there.
+- **Fixtures as files in `fixtures/` vs objects in code.** The mock's documents, its extractions, the WhatsApp media map and the sample webhook bodies are plain files that tests, scripts and the running mock all read, so there is one copy to edit and the assignment's "fixture map" is a file you can open. They are read synchronously when `lib/extraction/fixtures.ts` is first imported and validated strictly (unknown keys, bad dates, duplicate bytes, an unknown error code all fail with the fixture's name). The cost: anything that imports `@/lib/extraction` needs `fixtures/` present and the process started from the project root, even with `EXTRACTOR=claude`.
 - **The real extractor fails on first use without a key** rather than silently falling back to the mock, because a misconfigured production would otherwise process real documents with fixtures.
 
 ## 10. Known limitations
@@ -239,7 +241,7 @@ Races are tested by forcing the bad interleaving (injecting a competing confirma
 - **The Arabic folding is not exhaustive** (Persian yeh/kaf, `ؤ`, `ئ` are not folded).
 - The merchant subset rule is generous: a document merchant of only "Retail" scores 1.0 against "ARAMCO RETAIL". The amount gate and date still have to line up.
 - After losing a race the reviewer's row stays on screen with the error message until the page reloads.
-- Auto-match has a hard dependence on `extraction.confidence`, which is self-reported by the extractor.
+- Auto-match has a hard dependence on `extractionConfidence`, which is self-reported by the extractor.
 - `ClaudeExtractor` has only run against a stubbed client. Whether the API accepts the structured-output schema as written (keywords stripped from the JSON schema, `output_config` with `effort`), real accuracy, calibration of its confidence, and prompt-injection resistance were not verified. Treat it as untested against the real API.
 
 ## 11. Multi-transaction invoices (design sketch, not built)
@@ -254,12 +256,13 @@ One supplier invoice sometimes covers several card charges (a monthly invoice pa
 
 ## 12. Testing
 
-`npm test` runs 601 tests in about a second. Suites:
+`npm test` runs 741 tests in about a second. Suites:
 
 - **Matcher and helpers (no DB):** the six required edge cases plus the last4 tie-breaker; every row of the amount and date tables; exact boundaries at the thresholds and margin; float-noise cases; order independence under shuffles; stable ties; deep-frozen inputs; a test that fails if `Date.now` or `Math.random` is called; scope filters for both sender kinds; currency mismatch; low-confidence cap; `CARD_MISMATCH`; the amount gate. Normalization and similarity tests use real merchant strings, including negatives.
 - **Ingestion (real SQLite file per test file):** every row of the scenario table run through the real pipeline; duplicate message id; duplicate content under a new id; the same bytes from a different sender (not a duplicate); 8 concurrent identical submissions; extractor throwing/hanging/invalid; blob missing; two workers racing; lease expiry; stale recovery; a **forced** lost auto-confirm race.
 - **Handlers:** signature forged/missing/tampered, malformed JSON, schema violations not echoing values, unknown sender, redelivery, oversize, retryable vs permanent media failures (503 vs 200), partial-batch redelivery, the transaction feed, and re-match including scope and previously-rejected pairs.
 - **Review actions:** happy path, double submit (row snapshot unchanged), transaction taken, concurrent confirms, forced races (both the pre-check path and the unique-index-only path, verified by mutation), cross-document rejection, scope mismatch, error mapping with no internals leaked.
+- **Fixtures and media:** the fixture loader's failure modes (missing directory, missing file, invalid JSON, a pre-rename or typo'd extraction, a bad `throws` code, duplicate bytes), the `FixtureName` union against the files on disk, the sample webhook bodies against the files and media map, and `FixtureMediaStore` (unknown id, prototype-key ids, `../` and absolute paths in the map, a sibling directory with a matching prefix, missing map or file). ISO 8601 `documentDate`: date-only, `Z` and offset datetimes, the Riyadh day boundary, invalid and impossible dates, through the schema, the date signal, the candidate window and the real pipeline.
 - **DB constraints:** single-connection handling under parallel transactions; the partial index (both error forms, update path, reconfirm after reject), every unique key, enum and money round-trips, seed idempotence.
 
 Beyond unit tests, the full flow was run against a real `next dev` server with HMAC secrets set, using `scripts/send-fixtures.sh`, and a confirm was performed through the browser UI and checked in the database.

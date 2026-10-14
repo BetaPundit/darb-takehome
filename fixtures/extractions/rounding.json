@@ -1,0 +1,12 @@
+{
+  "documentType": "RECEIPT",
+  "merchantName": "Panda Retail Co",
+  "vatNumber": null,
+  "totalAmount": 23100,
+  "currency": "SAR",
+  "documentDate": "2026-10-03",
+  "cardLast4": null,
+  "invoiceNumber": null,
+  "rawText": "Panda Retail Co\nGroceries\nTotal: 231.00 SAR\nDate: 2026-10-03",
+  "extractionConfidence": 0.92
+}

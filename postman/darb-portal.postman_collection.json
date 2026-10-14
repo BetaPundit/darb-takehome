@@ -547,14 +547,14 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"15550001111\",\n              \"phone_number_id\": \"123\"\n            },\n            \"messages\": [\n              {\n                \"id\": \"wamid.{{runId}}.1\",\n                \"from\": \"966501111111\",\n                \"timestamp\": \"1760000000\",\n                \"type\": \"image\",\n                \"image\": {\n                  \"id\": \"fixture:exact\",\n                  \"mime_type\": \"image/jpeg\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"15550001111\",\n              \"phone_number_id\": \"123\"\n            },\n            \"messages\": [\n              {\n                \"id\": \"wamid.{{runId}}.1\",\n                \"from\": \"966501111111\",\n                \"timestamp\": \"1760000000\",\n                \"type\": \"image\",\n                \"image\": {\n                  \"id\": \"media_4471\",\n                  \"mime_type\": \"image/jpeg\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             },
-            "description": "The media id \"fixture:exact\" is resolved by a dev-only fixture fetcher, so no Meta credentials are needed. Phone numbers arrive WITHOUT a leading + (as Meta sends them) and are normalised to E.164."
+            "description": "The media id \"media_4471\" is resolved through fixtures/media-map.json by a dev-only fixture MediaStore, so no Meta credentials are needed. Phone numbers arrive WITHOUT a leading + (as Meta sends them) and are normalised to E.164."
           },
           "event": [
             {
@@ -593,7 +593,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"15550001111\",\n              \"phone_number_id\": \"123\"\n            },\n            \"messages\": [\n              {\n                \"id\": \"wamid.{{runId}}.2\",\n                \"from\": \"966501111111\",\n                \"timestamp\": \"1760000000\",\n                \"type\": \"image\",\n                \"image\": {\n                  \"id\": \"fixture:ambiguous\",\n                  \"mime_type\": \"image/jpeg\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"15550001111\",\n              \"phone_number_id\": \"123\"\n            },\n            \"messages\": [\n              {\n                \"id\": \"wamid.{{runId}}.2\",\n                \"from\": \"966501111111\",\n                \"timestamp\": \"1760000000\",\n                \"type\": \"image\",\n                \"image\": {\n                  \"id\": \"media_4472\",\n                  \"mime_type\": \"image/jpeg\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -638,7 +638,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"15550001111\",\n              \"phone_number_id\": \"123\"\n            },\n            \"messages\": [\n              {\n                \"id\": \"wamid.{{runId}}.3\",\n                \"from\": \"966501111111\",\n                \"timestamp\": \"1760000000\",\n                \"type\": \"image\",\n                \"image\": {\n                  \"id\": \"fixture:garbage\",\n                  \"mime_type\": \"image/jpeg\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"15550001111\",\n              \"phone_number_id\": \"123\"\n            },\n            \"messages\": [\n              {\n                \"id\": \"wamid.{{runId}}.3\",\n                \"from\": \"966501111111\",\n                \"timestamp\": \"1760000000\",\n                \"type\": \"image\",\n                \"image\": {\n                  \"id\": \"media_4478\",\n                  \"mime_type\": \"image/jpeg\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -683,7 +683,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"15550001111\",\n              \"phone_number_id\": \"123\"\n            },\n            \"messages\": [\n              {\n                \"id\": \"wamid.{{runId}}.4\",\n                \"from\": \"966501111111\",\n                \"timestamp\": \"1760000000\",\n                \"type\": \"image\",\n                \"image\": {\n                  \"id\": \"fixture:forced_failure\",\n                  \"mime_type\": \"image/jpeg\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"15550001111\",\n              \"phone_number_id\": \"123\"\n            },\n            \"messages\": [\n              {\n                \"id\": \"wamid.{{runId}}.4\",\n                \"from\": \"966501111111\",\n                \"timestamp\": \"1760000000\",\n                \"type\": \"image\",\n                \"image\": {\n                  \"id\": \"media_4483\",\n                  \"mime_type\": \"image/jpeg\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -729,7 +729,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"15550001111\",\n              \"phone_number_id\": \"123\"\n            },\n            \"messages\": [\n              {\n                \"id\": \"wamid.{{runId}}.1\",\n                \"from\": \"966501111111\",\n                \"timestamp\": \"1760000000\",\n                \"type\": \"image\",\n                \"image\": {\n                  \"id\": \"fixture:exact\",\n                  \"mime_type\": \"image/jpeg\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"15550001111\",\n              \"phone_number_id\": \"123\"\n            },\n            \"messages\": [\n              {\n                \"id\": \"wamid.{{runId}}.1\",\n                \"from\": \"966501111111\",\n                \"timestamp\": \"1760000000\",\n                \"type\": \"image\",\n                \"image\": {\n                  \"id\": \"media_4471\",\n                  \"mime_type\": \"image/jpeg\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -876,7 +876,7 @@
                 }
               }
             },
-            "description": "Send the 'no_transaction' fixture first (WhatsApp image with media id fixture:no_transaction): it is UNMATCHED. Delivering this transaction re-matches it and auto-confirms."
+            "description": "Send the 'no_transaction' fixture first (WhatsApp image with media id media_4477, see fixtures/media-map.json): it is UNMATCHED. Delivering this transaction re-matches it and auto-confirms."
           },
           "event": [
             {

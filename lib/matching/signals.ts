@@ -1,5 +1,6 @@
 import type { MatcherConfig } from '@/lib/config/matching';
 import { addVat } from '@/lib/money';
+import { documentDay } from './dates';
 import { merchantSimilarity } from './similarity';
 
 export type MatchFlag =
@@ -47,17 +48,6 @@ export function amountSignal(txnMinor: number, docMinor: number, cfg: MatcherCon
   return direct;
 }
 
-function docDayNumber(ymd: string): number | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
-  if (!m) return null;
-  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  const ms = Date.UTC(y, mo - 1, d);
-  const back = new Date(ms);
-  // reject impossible dates that Date.UTC would silently roll over (2026-02-30)
-  if (back.getUTCFullYear() !== y || back.getUTCMonth() !== mo - 1 || back.getUTCDate() !== d) return null;
-  return ms / MS_PER_DAY;
-}
-
 export interface DateResult {
   value: number;
   /** txnDay - docDay in calendar days; null when the document date is unusable. */
@@ -66,7 +56,7 @@ export interface DateResult {
 }
 
 export function dateSignal(occurredAt: Date, docDate: string | null, cfg: MatcherConfig): DateResult {
-  const docDay = docDate === null ? null : docDayNumber(docDate);
+  const docDay = docDate === null ? null : documentDay(docDate, cfg.utcOffsetMinutes);
   if (docDay === null) return { value: cfg.dateMissingSignal, dayDiff: null, flags: ['DATE_MISSING'] };
 
   const txnDay = Math.floor((occurredAt.getTime() + cfg.utcOffsetMinutes * 60_000) / MS_PER_DAY);

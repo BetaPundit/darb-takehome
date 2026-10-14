@@ -48,13 +48,13 @@ export const seedConfirmedExtraction: ExtractedDocument = {
   documentType: 'RECEIPT',
   merchantName: 'SASCO Station 118',
   vatNumber: null,
-  amountMinor: 8000,
+  totalAmount: 8000,
   currency: 'SAR',
   documentDate: '2026-10-01',
   cardLast4: null,
   invoiceNumber: null,
   rawText: 'SASCO Station 118\nTotal SAR 80.00\n2026-10-01',
-  confidence: 0.95,
+  extractionConfidence: 0.95,
 };
 
 const SEED_CONTENT_HASH = 'a'.repeat(64);
@@ -72,7 +72,7 @@ export const seedDocument = {
   mimeType: 'application/pdf',
   status: 'MATCHED' as const,
   extraction: seedConfirmedExtraction,
-  extractionConfidence: seedConfirmedExtraction.confidence,
+  extractionConfidence: seedConfirmedExtraction.extractionConfidence,
   receivedAt: new Date('2026-10-01T10:00:00+03:00'),
 };
 

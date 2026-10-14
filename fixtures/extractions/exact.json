@@ -1,0 +1,12 @@
+{
+  "documentType": "RECEIPT",
+  "merchantName": "Aramco Retail Station 0412",
+  "vatNumber": null,
+  "totalAmount": 18750,
+  "currency": "SAR",
+  "documentDate": "2026-10-01T09:15:00+03:00",
+  "cardLast4": null,
+  "invoiceNumber": null,
+  "rawText": "Aramco Retail Station 0412\nFuel - Diesel\nTotal: 187.50 SAR\nDate: 2026-10-01 09:15",
+  "extractionConfidence": 0.95
+}

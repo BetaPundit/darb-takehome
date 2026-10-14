@@ -1,0 +1,24 @@
+{
+  "entry": [
+    {
+      "changes": [
+        {
+          "value": {
+            "messages": [
+              {
+                "id": "wamid.HBgMOTY2NT.tip",
+                "from": "966502222222",
+                "timestamp": "1718356881",
+                "type": "image",
+                "image": {
+                  "id": "media_4485",
+                  "mime_type": "image/jpeg"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

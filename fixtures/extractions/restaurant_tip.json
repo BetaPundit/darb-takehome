@@ -1,0 +1,12 @@
+{
+  "documentType": "RECEIPT",
+  "merchantName": "Al Romansiah Restaurant",
+  "vatNumber": null,
+  "totalAmount": 5750,
+  "currency": "SAR",
+  "documentDate": "2026-10-07",
+  "cardLast4": null,
+  "invoiceNumber": null,
+  "rawText": "Al Romansiah Restaurant\nMain x2, Drinks\nTotal: 57.50 SAR\nDate: 2026-10-07",
+  "extractionConfidence": 0.92
+}

@@ -1,0 +1,12 @@
+{
+  "documentType": "RECEIPT",
+  "merchantName": "Starbucks Coffee Company",
+  "vatNumber": null,
+  "totalAmount": 6000,
+  "currency": "SAR",
+  "documentDate": "2026-10-03",
+  "cardLast4": null,
+  "invoiceNumber": null,
+  "rawText": "Starbucks Coffee Company\nLatte x2, Croissant x2\nTotal: 60.00 SAR\nDate: 2026-10-03",
+  "extractionConfidence": 0.9
+}

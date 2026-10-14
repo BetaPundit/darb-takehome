@@ -79,8 +79,8 @@ function inScope(c: MatcherCandidate, sender: MatchSender): boolean {
   return sender.kind === 'WHATSAPP' ? c.driverPhone === sender.phone : c.clientId === sender.clientId;
 }
 
-function score(c: MatcherCandidate, doc: ExtractedDocument & { amountMinor: number }, config: MatcherConfig): Ranked {
-  const amount = amountSignal(c.amountMinor, doc.amountMinor, config);
+function score(c: MatcherCandidate, doc: ExtractedDocument & { totalAmount: number }, config: MatcherConfig): Ranked {
+  const amount = amountSignal(c.amountMinor, doc.totalAmount, config);
   const merchant = merchantSignal(doc.merchantName, c.merchantName);
   const date = dateSignal(c.occurredAt, doc.documentDate, config);
   const card = cardSignal(doc.cardLast4, c.cardLast4);
@@ -115,10 +115,10 @@ export function matchDocument(input: MatchInput): MatchResult {
   const { document, sender, candidates, config = DEFAULT_MATCHER_CONFIG } = input;
 
   // 1. Usable? A zero total is treated as unreadable: it would "exactly match" any zero-amount transaction.
-  if (document.documentType === 'UNKNOWN' || document.amountMinor === null || document.amountMinor <= 0 || document.currency === null) {
+  if (document.documentType === 'UNKNOWN' || document.totalAmount === null || document.totalAmount <= 0 || document.currency === null) {
     return unmatched('INSUFFICIENT_DATA');
   }
-  const doc = { ...document, amountMinor: document.amountMinor };
+  const doc = { ...document, totalAmount: document.totalAmount };
   const currency = document.currency.toUpperCase();
 
   // 2. Hard filters.
@@ -137,7 +137,7 @@ export function matchDocument(input: MatchInput): MatchResult {
   const ranked = plausible.slice(0, MAX_RESULT_CANDIDATES).map((r) => r.scored);
 
   // 6. Decide.
-  const lowConfidence = document.confidence < config.minConfidenceForAuto;
+  const lowConfidence = document.extractionConfidence < config.minConfidenceForAuto;
   const ambiguous = runnerUp !== undefined && round4(top.score - runnerUp.score) < config.minMargin;
   // A missing date removes a whole corroborating signal, so a card match must not be able to make up for it.
   const dateMissing = top.flags.includes('DATE_MISSING');

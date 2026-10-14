@@ -1,226 +1,111 @@
+import { readFileSync, statSync } from 'node:fs';
+import path from 'node:path';
+import { z } from 'zod';
 import { sha256Hex } from './hash';
-import type { ExtractedDocument, ExtractionErrorCode } from './types';
+import { EXTRACTION_ERROR_CODES, extractedDocumentSchema, type ExtractedDocument, type ExtractionErrorCode } from './types';
 
 /**
- * Deterministic "OCR" fixtures. The values here are the shared contract with seed data,
- * matcher tests and the webhook demo script: do not change them without updating those.
- * A fixture's input bytes are the UTF-8 string `DARB-FIXTURE:<name>`.
+ * Deterministic "OCR" fixtures, loaded from the repo's fixtures/ directory, which is their single source of truth.
+ *   fixtures/documents/<name>.fixture   the bytes of the "file" that arrives; the mock looks a file up by the sha256 of these bytes
+ *   fixtures/extractions/<name>.json    what the mock OCR returns for it (ExtractedDocument), or { "throws": "<ExtractionErrorCode>" }
+ * Read synchronously when this module is first imported; a missing directory or an invalid file fails loudly, naming the culprit.
  */
+
+/** Hand-written so `FixtureName` is a real union. A test asserts it equals the files on disk, so a new file without an entry here fails CI. */
+export const FIXTURE_NAMES = [
+  'exact',
+  'ambiguous',
+  'ambiguous_last4',
+  'tip',
+  'rounding',
+  'prevat',
+  'no_transaction',
+  'garbage',
+  'low_confidence',
+  'email_exact',
+  'arabic',
+  'already_confirmed',
+  'forced_failure',
+  'alfanar_invoice',
+  'restaurant_tip',
+] as const;
+export type FixtureName = (typeof FIXTURE_NAMES)[number];
+
 export type Fixture =
-  | { name: string; content: string; expected: ExtractedDocument }
-  | { name: string; content: string; throws: ExtractionErrorCode };
+  | { name: string; bytes: Buffer; expected: ExtractedDocument }
+  | { name: string; bytes: Buffer; throws: ExtractionErrorCode };
 
-export const FIXTURES = {
-  exact: {
-    name: 'exact',
-    content: 'DARB-FIXTURE:exact',
-    expected: {
-      documentType: 'RECEIPT',
-      merchantName: 'Aramco Retail Station 0412',
-      vatNumber: null,
-      amountMinor: 18750,
-      currency: 'SAR',
-      documentDate: '2026-10-01',
-      cardLast4: null,
-      invoiceNumber: null,
-      rawText: 'Aramco Retail Station 0412\nFuel - Diesel\nTotal: 187.50 SAR\nDate: 2026-10-01 09:15',
-      confidence: 0.95,
-    },
-  },
-  ambiguous: {
-    name: 'ambiguous',
-    content: 'DARB-FIXTURE:ambiguous',
-    expected: {
-      documentType: 'RECEIPT',
-      merchantName: 'Al Baik',
-      vatNumber: null,
-      amountMinor: 4500,
-      currency: 'SAR',
-      documentDate: '2026-10-02',
-      cardLast4: null,
-      invoiceNumber: null,
-      rawText: 'Al Baik\nMeal combo x2\nTotal: 45.00 SAR\nDate: 2026-10-02',
-      confidence: 0.93,
-    },
-  },
-  ambiguous_last4: {
-    name: 'ambiguous_last4',
-    content: 'DARB-FIXTURE:ambiguous_last4',
-    expected: {
-      documentType: 'RECEIPT',
-      merchantName: 'Al Baik',
-      vatNumber: null,
-      amountMinor: 4500,
-      currency: 'SAR',
-      documentDate: '2026-10-02',
-      cardLast4: '4242',
-      invoiceNumber: null,
-      rawText: 'Al Baik\nMeal combo x2\nTotal: 45.00 SAR\nCard: **** **** **** 4242\nDate: 2026-10-02',
-      confidence: 0.93,
-    },
-  },
-  tip: {
-    name: 'tip',
-    content: 'DARB-FIXTURE:tip',
-    expected: {
-      documentType: 'RECEIPT',
-      merchantName: 'Starbucks Coffee Company',
-      vatNumber: null,
-      amountMinor: 6000,
-      currency: 'SAR',
-      documentDate: '2026-10-03',
-      cardLast4: null,
-      invoiceNumber: null,
-      rawText: 'Starbucks Coffee Company\nLatte x2, Croissant x2\nTotal: 60.00 SAR\nDate: 2026-10-03',
-      confidence: 0.9,
-    },
-  },
-  rounding: {
-    name: 'rounding',
-    content: 'DARB-FIXTURE:rounding',
-    expected: {
-      documentType: 'RECEIPT',
-      merchantName: 'Panda Retail Co',
-      vatNumber: null,
-      amountMinor: 23100,
-      currency: 'SAR',
-      documentDate: '2026-10-03',
-      cardLast4: null,
-      invoiceNumber: null,
-      rawText: 'Panda Retail Co\nGroceries\nTotal: 231.00 SAR\nDate: 2026-10-03',
-      confidence: 0.92,
-    },
-  },
-  prevat: {
-    name: 'prevat',
-    content: 'DARB-FIXTURE:prevat',
-    expected: {
-      documentType: 'TAX_INVOICE',
-      merchantName: 'Jarir Bookstore',
-      vatNumber: '300112233400003',
-      amountMinor: 10000,
-      currency: 'SAR',
-      documentDate: '2026-10-04',
-      cardLast4: null,
-      invoiceNumber: 'INV-4471',
-      rawText:
-        'Tax Invoice\nJarir Bookstore\nVAT No: 300112233400003\nInvoice: INV-4471\nAmount before VAT: 100.00 SAR\nVAT 15%: 15.00 SAR\nTotal: [illegible]\nDate: 2026-10-04',
-      confidence: 0.94,
-    },
-  },
-  no_transaction: {
-    name: 'no_transaction',
-    content: 'DARB-FIXTURE:no_transaction',
-    expected: {
-      documentType: 'TAX_INVOICE',
-      merchantName: 'Saudi Electricity Company',
-      vatNumber: '300000000000003',
-      amountMinor: 99999,
-      currency: 'SAR',
-      documentDate: '2026-10-02',
-      cardLast4: null,
-      invoiceNumber: 'SEC-5521',
-      rawText:
-        'Tax Invoice\nSaudi Electricity Company\nVAT No: 300000000000003\nInvoice: SEC-5521\nTotal due: 999.99 SAR\nDate: 2026-10-02',
-      confidence: 0.96,
-    },
-  },
-  garbage: {
-    name: 'garbage',
-    content: 'DARB-FIXTURE:garbage',
-    expected: {
-      documentType: 'UNKNOWN',
-      merchantName: null,
-      vatNumber: null,
-      amountMinor: null,
-      currency: null,
-      documentDate: null,
-      cardLast4: null,
-      invoiceNumber: null,
-      rawText: '~~ xk# 0o0 ,, ;; ..',
-      confidence: 0.1,
-    },
-  },
-  low_confidence: {
-    name: 'low_confidence',
-    content: 'DARB-FIXTURE:low_confidence',
-    expected: {
-      documentType: 'RECEIPT',
-      merchantName: 'Nadec Foods',
-      vatNumber: null,
-      amountMinor: 7200,
-      currency: 'SAR',
-      documentDate: '2026-10-04',
-      cardLast4: null,
-      invoiceNumber: null,
-      rawText: 'N4DEC F00ds\nDa1ry\nTota1: 72.00 SAR\n2026-10-04',
-      confidence: 0.45,
-    },
-  },
-  email_exact: {
-    name: 'email_exact',
-    content: 'DARB-FIXTURE:email_exact',
-    expected: {
-      documentType: 'TAX_INVOICE',
-      merchantName: 'ADNOC Distribution LLC',
-      vatNumber: '300000000000003',
-      amountMinor: 25000,
-      currency: 'SAR',
-      documentDate: '2026-10-04',
-      cardLast4: null,
-      invoiceNumber: 'INV-88231',
-      rawText:
-        'Tax Invoice\nADNOC Distribution LLC\nVAT No: 300000000000003\nInvoice: INV-88231\nFuel\nTotal: 250.00 SAR\nDate: 2026-10-04',
-      confidence: 0.97,
-    },
-  },
-  arabic: {
-    name: 'arabic',
-    content: 'DARB-FIXTURE:arabic',
-    expected: {
-      documentType: 'RECEIPT',
-      merchantName: 'مطعم البيك - فرع الرياض',
-      vatNumber: null,
-      amountMinor: 3500,
-      currency: 'SAR',
-      documentDate: '2026-10-05',
-      cardLast4: null,
-      invoiceNumber: null,
-      rawText: 'مطعم البيك - فرع الرياض\nوجبة\nالإجمالي: 35.00 ر.س\nالتاريخ: 2026-10-05',
-      confidence: 0.9,
-    },
-  },
-  already_confirmed: {
-    name: 'already_confirmed',
-    content: 'DARB-FIXTURE:already_confirmed',
-    expected: {
-      documentType: 'RECEIPT',
-      merchantName: 'SASCO Station 118',
-      vatNumber: null,
-      amountMinor: 8000,
-      currency: 'SAR',
-      documentDate: '2026-10-01',
-      cardLast4: null,
-      invoiceNumber: null,
-      rawText: 'SASCO Station 118\nFuel - 91\nTotal: 80.00 SAR\nDate: 2026-10-01 07:30',
-      confidence: 0.95,
-    },
-  },
-  forced_failure: {
-    name: 'forced_failure',
-    content: 'DARB-FIXTURE:forced_failure',
-    throws: 'FIXTURE_FORCED_FAILURE',
-  },
-} as const satisfies Record<string, Fixture>;
+/** `fixtures/` at the project root. The server is always started from the project root (next dev/start, jest, tsx scripts). */
+export const defaultFixturesDir = (): string => path.resolve(process.cwd(), 'fixtures');
 
-export type FixtureName = keyof typeof FIXTURES;
+const failureSchema = z.object({ throws: z.enum(EXTRACTION_ERROR_CODES) }).strict();
+// strict(): a typo'd or leftover key in a fixture is an error here, not silently dropped like it is for real extractor output
+const strictExtractionSchema = extractedDocumentSchema.strict();
 
-export const fixtureNames = Object.keys(FIXTURES) as FixtureName[];
+function describeIssues(error: z.ZodError): string {
+  return error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ');
+}
 
+function readFixtureFile(dir: string, name: string, relative: string): Buffer {
+  try {
+    return readFileSync(path.join(dir, relative));
+  } catch {
+    throw new Error(`Fixture "${name}": cannot read ${relative} in ${dir}`);
+  }
+}
+
+export function loadFixtures<N extends string>(dir: string, names: readonly N[]): Record<N, Fixture> {
+  if (!statSync(dir, { throwIfNoEntry: false })?.isDirectory()) {
+    throw new Error(`Fixtures directory not found: ${dir} (expected documents/<name>.fixture and extractions/<name>.json; run the server from the project root)`);
+  }
+
+  const loaded = {} as Record<N, Fixture>;
+  const byHash = new Map<string, string>();
+  for (const name of names) {
+    const bytes = readFixtureFile(dir, name, `documents/${name}.fixture`);
+    const hash = sha256Hex(bytes);
+    const clash = byHash.get(hash);
+    if (clash !== undefined) throw new Error(`Fixtures "${clash}" and "${name}" have identical bytes: the mock extractor looks files up by hash, so one would shadow the other`);
+    byHash.set(hash, name);
+
+    const file = `extractions/${name}.json`;
+    let json: unknown;
+    try {
+      json = JSON.parse(readFixtureFile(dir, name, file).toString('utf8'));
+    } catch (err) {
+      if (err instanceof SyntaxError) throw new Error(`Fixture "${name}": ${file} is not valid JSON`);
+      throw err;
+    }
+
+    if (typeof json === 'object' && json !== null && 'throws' in json) {
+      const failure = failureSchema.safeParse(json);
+      if (!failure.success) throw new Error(`Fixture "${name}": ${file} must be { "throws": "<ExtractionErrorCode>" } (${describeIssues(failure.error)})`);
+      loaded[name] = { name, bytes, throws: failure.data.throws };
+      continue;
+    }
+    const parsed = strictExtractionSchema.safeParse(json);
+    if (!parsed.success) throw new Error(`Fixture "${name}": ${file} does not satisfy the ExtractedDocument schema (${describeIssues(parsed.error)})`);
+    loaded[name] = { name, bytes, expected: parsed.data };
+  }
+  return loaded;
+}
+
+export const FIXTURES: Record<FixtureName, Fixture> = loadFixtures(defaultFixturesDir(), FIXTURE_NAMES);
+
+export const fixtureNames: readonly FixtureName[] = FIXTURE_NAMES;
+
+/** A copy: callers may mutate it without corrupting the loaded fixture. */
 export function fixtureBytes(name: FixtureName): Buffer {
-  return Buffer.from(FIXTURES[name].content, 'utf8');
+  return Buffer.from(FIXTURES[name].bytes);
 }
 
 export function fixtureHash(name: FixtureName): string {
-  return sha256Hex(fixtureBytes(name));
+  return sha256Hex(FIXTURES[name].bytes);
+}
+
+/** The extraction a fixture returns. Throws for a deliberate-failure fixture. A copy, like what MockExtractor returns. */
+export function fixtureExpected(name: FixtureName): ExtractedDocument {
+  const f = FIXTURES[name];
+  if (!('expected' in f)) throw new Error(`Fixture "${name}" is a deliberate failure (${f.throws}), it has no extraction`);
+  return structuredClone(f.expected);
 }

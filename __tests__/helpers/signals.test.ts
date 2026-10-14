@@ -128,6 +128,38 @@ describe('dateSignal (calendar days in UTC+3)', () => {
     expect(dateSignal(new Date('2026-10-01T21:30:00Z'), '2026-10-02', utc)).toMatchObject({ value: 0.7, dayDiff: -1 });
   });
 
+  describe('ISO 8601 datetimes on the document', () => {
+    it('a Z datetime late in the evening UTC is the NEXT Riyadh day, and is compared on that day', () => {
+      const doc = '2026-10-01T22:30:00Z'; // 01:30 on Oct 2 in Riyadh
+      expect(dateSignal(riyadhNoon('2026-10-02'), doc, cfg)).toEqual({ value: 1, dayDiff: 0, flags: [] });
+      expect(dateSignal(riyadhNoon('2026-10-01'), doc, cfg)).toEqual({ value: 0.7, dayDiff: -1, flags: ['DATE_OFFSET'] });
+    });
+
+    it('an offset datetime keeps the day it was printed on when the offset is Riyadh\'s', () => {
+      expect(dateSignal(riyadhNoon('2026-10-01'), '2026-10-01T09:15:00+03:00', cfg)).toEqual({ value: 1, dayDiff: 0, flags: [] });
+      expect(dateSignal(riyadhNoon('2026-10-01'), '2026-10-01T00:05:00+03:00', cfg).value).toBe(1); // UTC says Sep 30
+    });
+
+    it('an offset datetime in another zone is converted to its Riyadh day first', () => {
+      // 23:30 at UTC-5 = 07:30 the next morning in Riyadh
+      expect(dateSignal(riyadhNoon('2026-10-02'), '2026-10-01T23:30:00-05:00', cfg).value).toBe(1);
+    });
+
+    it('a datetime follows utcOffsetMinutes from config, a date-only value does not', () => {
+      const utc = { ...cfg, utcOffsetMinutes: 0 };
+      expect(dateSignal(new Date('2026-10-02T09:00:00Z'), '2026-10-01T22:30:00Z', utc)).toMatchObject({ dayDiff: 1 }); // doc day is Oct 1 in UTC
+      expect(dateSignal(new Date('2026-10-02T09:00:00Z'), '2026-10-02', utc)).toMatchObject({ dayDiff: 0 });
+    });
+
+    it.each(['garbage', '', '2026-10-01T09:15:00', '2026-10-01T25:00:00Z', '2026-02-30T10:00:00Z', '2026-10-01 09:15'])(
+      'an invalid date string (%p) is treated as missing, exactly like null',
+      (bad) => {
+        expect(dateSignal(riyadhNoon('2026-10-01'), bad, cfg)).toEqual(dateSignal(riyadhNoon('2026-10-01'), null, cfg));
+        expect(dateSignal(riyadhNoon('2026-10-01'), bad, cfg).flags).toEqual(['DATE_MISSING']);
+      },
+    );
+  });
+
   it('an invalid Date on the transaction scores 0 rather than throwing', () => {
     expect(dateSignal(new Date('nope'), '2026-10-04', cfg).value).toBe(0);
   });

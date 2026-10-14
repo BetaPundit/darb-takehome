@@ -38,7 +38,7 @@ describe('auto-confirm withdraws competing offers', () => {
     expect((await db.document.findUniqueOrThrow({ where: { id: first.documentId } })).status).toBe('NEEDS_REVIEW');
 
     // a second document for the same transaction that DOES clear the confidence bar
-    const confident = { ...(FIXTURES.low_confidence as { expected: ExtractedDocument }).expected, confidence: 0.95 };
+    const confident = { ...(FIXTURES.low_confidence as { expected: ExtractedDocument }).expected, extractionConfidence: 0.95 };
     const extractor: DocumentExtractor = { extract: async () => confident };
     const { service: stub } = makeService(db, { extractor });
     const [r] = await stub.accept({ source: 'WHATSAPP', externalMessageId: 'second', scope: DRIVER_2, attachments: [{ fileName: 'b.jpg', mimeType: 'image/jpeg', bytes: Buffer.from('second doc') }] });

@@ -13,7 +13,7 @@ export interface MatcherConfig {
   reviewFloor: number;
   /** top - runnerUp must be >= this for AUTO_MATCHED */
   minMargin: number;
-  /** extraction.confidence below this can never auto-match */
+  /** extractionConfidence below this can never auto-match */
   minConfidenceForAuto: number;
 
   /** |txn - doc| <= this (minor units) counts as rounding */

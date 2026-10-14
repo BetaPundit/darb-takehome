@@ -1,0 +1,17 @@
+{
+  "media_4471": "documents/exact.fixture",
+  "media_4472": "documents/ambiguous.fixture",
+  "media_4473": "documents/ambiguous_last4.fixture",
+  "media_4474": "documents/tip.fixture",
+  "media_4475": "documents/rounding.fixture",
+  "media_4476": "documents/prevat.fixture",
+  "media_4477": "documents/no_transaction.fixture",
+  "media_4478": "documents/garbage.fixture",
+  "media_4479": "documents/low_confidence.fixture",
+  "media_4480": "documents/email_exact.fixture",
+  "media_4481": "documents/arabic.fixture",
+  "media_4482": "documents/already_confirmed.fixture",
+  "media_4483": "documents/forced_failure.fixture",
+  "media_4484": "documents/alfanar_invoice.fixture",
+  "media_4485": "documents/restaurant_tip.fixture"
+}

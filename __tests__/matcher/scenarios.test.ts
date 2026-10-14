@@ -93,7 +93,7 @@ describe('seeded scenarios (mirror of SCENARIOS.md)', () => {
 
 describe('the 6 required edge cases, plus tip vs last4 interplay', () => {
   it('3. tip with last4: a small tip (5%) auto-matches only when the card corroborates', () => {
-    const base = { merchantName: 'Starbucks', amountMinor: 6000, documentDate: '2026-10-03' };
+    const base = { merchantName: 'Starbucks', totalAmount: 6000, documentDate: '2026-10-03' };
     const t = txn({ merchantName: 'STARBUCKS', amountMinor: 6300, occurredAt: at('2026-10-03'), cardLast4: '1111' });
     const without = matchDocument({ document: doc(base), sender: wa(PHONE), candidates: [t] });
     const withCard = matchDocument({ document: doc({ ...base, cardLast4: '1111' }), sender: wa(PHONE), candidates: [t] });
@@ -105,7 +105,7 @@ describe('the 6 required edge cases, plus tip vs last4 interplay', () => {
   it('3. a large tip (10%) still needs review even with a matching last4 (0.83 < 0.85): PLAN example only holds for tips <= ~8%', () => {
     const t = txn({ merchantName: 'STARBUCKS', amountMinor: 6600, occurredAt: at('2026-10-03'), cardLast4: '1111' });
     const r = matchDocument({
-      document: doc({ merchantName: 'Starbucks', amountMinor: 6000, documentDate: '2026-10-03', cardLast4: '1111' }),
+      document: doc({ merchantName: 'Starbucks', totalAmount: 6000, documentDate: '2026-10-03', cardLast4: '1111' }),
       sender: wa(PHONE),
       candidates: [t],
     });

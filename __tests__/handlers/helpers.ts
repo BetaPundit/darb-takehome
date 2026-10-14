@@ -1,19 +1,30 @@
-import { fixtureBytes, type FixtureName } from '@/lib/extraction/fixtures';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { defaultFixturesDir, fixtureBytes, type FixtureName } from '@/lib/extraction/fixtures';
 import { MockExtractor } from '@/lib/extraction/mock-extractor';
 import type { PrismaClient } from '@/lib/generated/prisma/client';
 import { silentLogger, type Logger } from '@/lib/logger';
 import { parseEnv } from '@/lib/env';
 import { InMemoryBlobStore } from '@/lib/services/blob-store';
 import { createIngestionService } from '@/lib/services/document-ingestion';
-import { FixtureMediaFetcher } from '@/lib/services/fixture-media-fetcher';
-import type { MediaFetcher } from '@/lib/services/media-fetcher';
+import { FixtureMediaStore } from '@/lib/services/fixture-media-store';
+import type { MediaStore } from '@/lib/services/media-store';
 import type { WebhookDeps } from '@/lib/webhooks/deps';
 import { signPayload } from '@/lib/webhooks/hmac';
+
+const MEDIA_MAP = JSON.parse(readFileSync(path.join(defaultFixturesDir(), 'media-map.json'), 'utf8')) as Record<string, string>;
+
+/** The media id fixtures/media-map.json assigns to a fixture file (e.g. exact -> media_4471). */
+export function mediaIdFor(name: FixtureName): string {
+  const id = Object.keys(MEDIA_MAP).find((k) => MEDIA_MAP[k] === `documents/${name}.fixture`);
+  if (!id) throw new Error(`fixtures/media-map.json has no media id for the "${name}" fixture`);
+  return id;
+}
 
 export const SECRETS = { email: 'email-secret', whatsapp: 'wa-secret', transactions: 'tx-secret', verify: 'verify-me' };
 
 /** Real handlers, real DB, real ingestion; only the network (media) and "after()" scheduling are test-controlled. */
-export function makeDeps(db: PrismaClient, overrides: { media?: MediaFetcher; env?: Record<string, string>; log?: Logger } = {}) {
+export function makeDeps(db: PrismaClient, overrides: { media?: MediaStore; env?: Record<string, string>; log?: Logger } = {}) {
   const pending: Promise<void>[] = [];
   const env = parseEnv({
     NODE_ENV: 'test',
@@ -29,7 +40,7 @@ export function makeDeps(db: PrismaClient, overrides: { media?: MediaFetcher; en
     db,
     env,
     ingestion,
-    media: overrides.media ?? new FixtureMediaFetcher(),
+    media: overrides.media ?? new FixtureMediaStore(),
     log,
     schedule: (task) => void pending.push(task()), // run immediately, but let the test await completion
     now: () => new Date('2026-10-06T08:00:00Z'),
@@ -73,7 +84,7 @@ export const waPayload = (messages: Array<{ id: string; from: string; media?: st
             messages: messages.map((m) =>
               m.type === 'text'
                 ? { id: m.id, from: m.from, timestamp: '1760000000', type: 'text', text: { body: 'hi' } }
-                : { id: m.id, from: m.from, timestamp: '1760000000', type: 'image', image: { id: m.media ?? 'fixture:exact', mime_type: m.mime ?? 'image/jpeg' } },
+                : { id: m.id, from: m.from, timestamp: '1760000000', type: 'image', image: { id: m.media ?? mediaIdFor('exact'), mime_type: m.mime ?? 'image/jpeg' } },
             ),
           },
         },

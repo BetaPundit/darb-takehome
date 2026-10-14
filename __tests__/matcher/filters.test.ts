@@ -7,9 +7,9 @@ const NO_CANDIDATES = { outcome: 'UNMATCHED', reason: 'NO_CANDIDATES_IN_SCOPE', 
 describe('usable-document gate', () => {
   it.each([
     ['UNKNOWN document type', { documentType: 'UNKNOWN' as const }],
-    ['null amount', { amountMinor: null }],
+    ['null amount', { totalAmount: null }],
     ['null currency', { currency: null }],
-    ['zero amount', { amountMinor: 0 }],
+    ['zero amount', { totalAmount: 0 }],
   ])('%s => UNMATCHED / INSUFFICIENT_DATA, even if every other field is perfect', (_name, overrides) => {
     const r = matchDocument({ document: doc(overrides), sender: WA, candidates: [txn()] });
     expect(r).toEqual({ outcome: 'UNMATCHED', reason: 'INSUFFICIENT_DATA', candidates: [] });

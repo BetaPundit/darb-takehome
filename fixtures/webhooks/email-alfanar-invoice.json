@@ -1,0 +1,14 @@
+{
+  "messageId": "msg_8f2a1",
+  "from": "billing@alfanar-fuel.com.sa",
+  "to": "receipts@darb.example.com",
+  "subject": "Tax Invoice #INV-99812",
+  "receivedAt": "2025-06-14T09:21:00Z",
+  "attachments": [
+    {
+      "filename": "invoice-99812.pdf",
+      "contentType": "application/pdf",
+      "contentBase64": "REFSQi1GSVhUVVJFOmFsZmFuYXJfaW52b2ljZQ=="
+    }
+  ]
+}
