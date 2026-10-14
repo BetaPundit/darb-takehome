@@ -1,6 +1,6 @@
 import type { MatchFlag } from '@/lib/matching/signals';
 import type { MatchReason } from '@/lib/services/transaction-matcher';
-import { flagLabel, flagText, reasonText } from '@/app/review/_components/labels';
+import { flagText, nextStepText, reasonText } from '@/app/review/_components/labels';
 
 // Typed as the full unions, so adding a flag or a reason without a label here is a compile error, and a label
 // that is still missing makes the test fail (an unknown code falls back to the raw code, which is never what a reviewer should read).
@@ -13,10 +13,8 @@ const MATCHER_REASONS: Record<MatchReason, true> = {
 };
 
 describe('review page labels', () => {
-  it.each(Object.keys(FLAGS))('flag %s has a short label and a plain-language explanation', (flag) => {
-    expect(flagLabel(flag)).not.toBe(flag);
+  it.each(Object.keys(FLAGS))('flag %s has a plain-language explanation', (flag) => {
     expect(flagText(flag)).not.toBe(flag);
-    expect(flagText(flag).length).toBeGreaterThan(flagLabel(flag).length);
   });
 
   // CLEAR_WINNER is never shown (those documents are MATCHED, not in the review queue)
@@ -35,7 +33,16 @@ describe('review page labels', () => {
 
   it('unknown codes fall back to the raw code instead of crashing', () => {
     expect(flagText('SOMETHING_NEW')).toBe('SOMETHING_NEW');
-    expect(flagLabel('SOMETHING_NEW')).toBe('SOMETHING_NEW');
     expect(reasonText(null)).toBe('No reason recorded');
+  });
+});
+
+describe('next steps for unmatched documents', () => {
+  it.each(['NO_PLAUSIBLE_CANDIDATE', 'NO_CANDIDATES_IN_SCOPE', 'INSUFFICIENT_DATA', 'ALL_CANDIDATES_REJECTED', 'CANDIDATE_TAKEN'])('%s says what happens next', (reason) => {
+    expect(nextStepText(reason)).toEqual(expect.any(String));
+  });
+  it('has nothing to say for a reason it does not know, or no reason', () => {
+    expect(nextStepText('SOMETHING_NEW')).toBeNull();
+    expect(nextStepText(null)).toBeNull();
   });
 });

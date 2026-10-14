@@ -66,6 +66,28 @@ it wipes and re-creates the demo data. On a freshly seeded database the results 
 | the assignment's WhatsApp sample (number `966551234567` is not a seeded driver) | `UNMATCHED` / `NO_CANDIDATES_IN_SCOPE` |
 | `no_transaction`, then its card transaction through the feed | `UNMATCHED`, then `MATCHED` by the re-match |
 
+## The review page
+
+`/review` lists every document the matcher could not attach on its own, oldest first. For each candidate transaction it
+says *how* the receipt agrees or differs (amount, merchant, date, card), so the reviewer decides on facts, not on a score.
+
+![The review queue: documents, candidate transactions and the evidence for each](docs/screenshots/review-queue.png)
+
+A charge that is higher than the receipt is flagged as a possible tip, with the size of the difference:
+
+![A candidate whose amount is 10% higher than the receipt, flagged as a possible tip](docs/screenshots/review-tip-suspected.png)
+
+A transaction that already has a confirmed document can never be confirmed a second time. It is shown as a possible
+duplicate and only offers Reject:
+
+![A possible duplicate: the only action is Reject](docs/screenshots/review-possible-duplicate.png)
+
+It works on a phone too:
+
+<img src="docs/screenshots/review-mobile.png" alt="The review queue at phone width" width="320">
+
+The screenshots show the demo data from `npm run db:seed` plus `./scripts/send-fixtures.sh`.
+
 ## Tests and checks
 
 ```bash

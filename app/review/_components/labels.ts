@@ -23,20 +23,18 @@ const FLAGS: Record<string, string> = {
   ALREADY_CONFIRMED: 'Possible duplicate: this transaction already has a confirmed document',
 };
 
-/** Short badge text; the sentence in FLAGS is the explanation (tooltip, and text for screen readers). */
-const FLAG_LABELS: Record<string, string> = {
-  TIP_SUSPECTED: 'Tip suspected',
-  PRE_VAT_AMOUNT: 'Pre-VAT amount',
-  CARD_MISMATCH: 'Card mismatch',
-  DATE_MISSING: 'No date',
-  DATE_OFFSET: 'Date differs',
-  AMOUNT_BELOW_CHARGE: 'Below charge',
-  ALREADY_CONFIRMED: 'Possible duplicate',
+/** What happens next for a document nobody could match, in plain terms. */
+const NEXT_STEPS: Record<string, string> = {
+  NO_PLAUSIBLE_CANDIDATE: 'It is matched again automatically if a fitting transaction arrives within 14 days.',
+  NO_CANDIDATES_IN_SCOPE: 'It is matched again automatically if a transaction for this sender arrives within 14 days.',
+  INSUFFICIENT_DATA: 'Ask the sender for a clearer photo or the original file.',
+  ALL_CANDIDATES_REJECTED: 'Rejected suggestions are never offered again. It is matched again if a different transaction arrives.',
+  CANDIDATE_TAKEN: 'The suggested transactions went to other documents. It is matched again if a new transaction arrives.',
 };
 
 export const reasonText = (code: string | null) => (code ? (REASONS[code] ?? code) : 'No reason recorded');
 export const flagText = (code: string) => FLAGS[code] ?? code;
-export const flagLabel = (code: string) => FLAG_LABELS[code] ?? code;
+export const nextStepText = (code: string | null) => (code ? (NEXT_STEPS[code] ?? null) : null);
 /** The candidate's transaction already has a confirmed document. Stored by the matcher in the candidate's flags. */
 export const ALREADY_CONFIRMED_FLAG = 'ALREADY_CONFIRMED';
 

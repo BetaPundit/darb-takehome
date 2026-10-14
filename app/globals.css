@@ -7,8 +7,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
+  /* shadcn's init wrote `--font-sans: var(--font-sans)`, a cycle the browser discards, so everything fell back to Times. */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -27,6 +28,12 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-good: var(--good);
+  --color-good-soft: var(--good-soft);
+  --color-caution: var(--caution);
+  --color-caution-soft: var(--caution-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -49,24 +56,31 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --background: #f2f4f6;
+  --foreground: #16222c;
+  --card: #ffffff;
+  --card-foreground: #16222c;
+  --popover: #ffffff;
+  --popover-foreground: #16222c;
+  --primary: #0b4f6c;
+  --primary-foreground: #ffffff;
+  --secondary: #e8edf1;
+  --secondary-foreground: #16222c;
+  --muted: #e8edf1;
+  --muted-foreground: #55636f;
+  --accent: #e1e9ee;
+  --accent-foreground: #16222c;
+  --destructive: #b3261e;
+  --border: #d5dbe1;
+  --input: #d5dbe1;
+  --ring: #0b4f6c;
+  /* review evidence: a match, a partial match, a mismatch (each pair is text on its soft background, both >= 4.5:1) */
+  --good: #1d7a52;
+  --good-soft: #e4f3eb;
+  --caution: #8f5500;
+  --caution-soft: #fff3db;
+  --bad: #b3261e;
+  --bad-soft: #fdecea;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -123,6 +137,13 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+  /* Tailwind v4 resets buttons to the default arrow; interactive controls should show a pointer. */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  [role='tab']:not([aria-disabled='true']),
+  summary {
+    cursor: pointer;
   }
   html {
     @apply font-sans;
