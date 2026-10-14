@@ -33,7 +33,16 @@ has 21 requests with assertions, covers every endpoint and the failure cases (du
 payloads, forged signature, oversized/fractional values), and signs each POST body for you. To sign, set the collection
 variables `emailSecret`, `whatsappSecret`, `transactionsSecret`, `verifyToken` to the same values the server was started
 with and `serverHasSecrets` to `true`; leave them empty for an unsigned dev server. Change `runId` to send fresh message ids.
-It also runs headless: `npx newman run postman/darb-portal.postman_collection.json --env-var baseUrl=http://localhost:3000`. Then open <http://localhost:3000/review>
+Two ready-made environments sit next to it. Import the collection and **one** environment, and select it:
+
+| Environment | Use it when | Server must be started with |
+|---|---|---|
+| `darb-portal.local-unsigned.postman_environment.json` | plain `npm run dev` (no secrets): requests are sent unsigned | nothing extra |
+| `darb-portal.local-signed.postman_environment.json` | you want HMAC signing exercised | `EMAIL_WEBHOOK_SECRET=demo-email-secret WHATSAPP_APP_SECRET=demo-whatsapp-app-secret TRANSACTIONS_WEBHOOK_SECRET=demo-transactions-secret WHATSAPP_VERIFY_TOKEN=demo-verify-token npm run dev` |
+
+The sample values are demo-only: change them freely, but the server and the environment must hold the **same** secrets,
+and `serverHasSecrets` must say whether the server has them (`true`/`false`), otherwise requests get 401 (or the
+"forged signature" request wrongly passes). Headless: `npx newman run postman/darb-portal.postman_collection.json -e postman/darb-portal.local-unsigned.postman_environment.json`. Then open <http://localhost:3000/review>
 to confirm or reject the candidates the matcher was not sure about.
 
 To exercise HMAC signing, set the secrets for both the server and the script:
