@@ -195,4 +195,4 @@ __tests__/               matcher, helpers, ingestion, handlers, actions, db cons
 - `ClaudeExtractor` is covered by unit tests with a stubbed client only. It has **not** been run against the real API.
 - The review actions and `/review` page have no authentication. They are intended to sit behind the portal's existing auth.
 - Dependency notes (Prisma 6, Zod 3, Jest 29 per the assignment's stack; Next 15 audit advisory) are in IMPLEMENTATION.md.
-- `DATABASE_URL` is `file:../dev.db`: Prisma 6 resolves a relative SQLite path against `prisma/`, so this is `./dev.db` at the project root.
+- `DATABASE_URL` is `file:../dev.db`: a relative SQLite path is resolved against `prisma/` (the Prisma CLI's rule), so this is `./dev.db` at the project root. The app resolves it itself (`resolveDatabaseUrl` in `lib/prisma-client.ts`) because inside Next's bundled server Prisma's own resolution pointed under `.next/` and failed with `Error code 14: Unable to open the database file`.
