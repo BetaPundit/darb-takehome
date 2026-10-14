@@ -175,6 +175,21 @@ erDiagram
 - Enums are exactly the ones in the assignment. SQLite stores them as TEXT without a CHECK constraint; Prisma validates them in the client.
 - Deviations from the minimal model in the assignment, each with a reason: `Client` / `ClientSender` (email sender → client scoping), `Transaction.cardLast4` (the matcher uses it), `Transaction.externalRef` (feed idempotency), `Document.attachmentIndex/scopeKey/blobKey/processingStartedAt/matchReason/failureReason`.
 
+### 4.1 Where this differs from the assignment's suggested shapes
+
+The assignment calls its schema a "suggested starting point" and gives interface sketches ("e.g."). The **extractor interface
+is followed exactly** (`ExtractedDocument` with `totalAmount` / `extractionConfidence`, `extract(file, mimeType)`, ISO 8601
+`documentDate`), because it is described as provided. Where the rest differs, on purpose:
+
+| Suggested | Built | Why |
+|---|---|---|
+| `Int @id @default(autoincrement())` ids, `z.number()` for `matchId` | String ids (cuid), `z.string()` for `matchId` | Ids that arrive from webhooks (message ids) and are shown in URLs should not leak row counts or be guessable by incrementing; costs nothing in SQLite |
+| `Document.externalId @unique` and a globally `@unique` `contentHash` | `@@unique([source, externalMessageId, attachmentIndex])` and `@@unique([scopeKey, contentHash])` | An email can carry several attachments (one id, many documents), and the same file sent by two different drivers is two legitimate submissions. Dedupe is per sender scope |
+| Extraction stored as columns on `Document` | One validated `extraction` JSON column | The extraction is evidence, not something queried on; it avoids a migration per extractor change, and it is re-validated with Zod on every read |
+| `matchDocument(doc, transactions)` | `matchDocument({ document, sender, candidates, config? })` | Sender scope (driver phone / client) is a hard filter inside the pure function, so scoping cannot be forgotten by a caller; `config` makes the thresholds injectable in tests |
+| `MatchCandidate { confidence, signals: Record<string, number> }` | `ScoredCandidate { score, signals: { amount, merchant, date, card }, flags }` | Typed signals instead of a loose record, plus machine-readable `flags` (`TIP_SUSPECTED`, `ALREADY_CONFIRMED`, ...) that the review page turns into plain language. `DocumentMatch.score` stores the same number the spec calls `confidence` |
+| `lib/logger.ts` exporting `log` | Exports `log` (the boilerplate name) plus `createLogger`, `consoleLogger`, `silentLogger` | Structured, request-scoped, redacting logger; `log.info(message, meta)` still works |
+
 ## 5. Idempotency and concurrency
 
 | Situation | What happens | Guaranteed by |
